@@ -1,0 +1,143 @@
+const express = require('express');
+const router = express.Router();
+const {
+    createPayment,
+    processPayment,
+    getPaymentById,
+    getMyPayments,
+    refundPayment,
+    getAllPayments
+} = require('../Controllers/paymentController');
+const authenticate = require('../middleware/authenticationMiddle');
+const authorize = require('../middleware/authorizationMiddle');
+
+/**
+ * @swagger
+ * /Freelancing/api/v1/payments:
+ *   post:
+ *     summary: Create a payment
+ *     tags: [Payments]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               contractId:
+ *                 type: string
+ *               amount:
+ *                 type: number
+ *               paymentMethod:
+ *                 type: string
+ *                 enum: [credit_card, debit_card, paypal, bank_transfer, wallet]
+ *               description:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Payment created successfully
+ */
+router.post('/', authenticate, createPayment);
+
+/**
+ * @swagger
+ * /Freelancing/api/v1/payments/{paymentId}/process:
+ *   post:
+ *     summary: Process a payment (mock)
+ *     tags: [Payments]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: paymentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Payment processed
+ */
+router.post('/:paymentId/process', authenticate, processPayment);
+
+/**
+ * @swagger
+ * /Freelancing/api/v1/payments/mine:
+ *   get:
+ *     summary: Get my payments
+ *     tags: [Payments]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [sent, received]
+ *     responses:
+ *       200:
+ *         description: Payments retrieved successfully
+ */
+router.get('/mine', authenticate, getMyPayments);
+
+/**
+ * @swagger
+ * /Freelancing/api/v1/payments:
+ *   get:
+ *     summary: Get all payments (admin only)
+ *     tags: [Payments]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Payments retrieved successfully
+ */
+router.get('/', authenticate, authorize('admin'), getAllPayments);
+
+/**
+ * @swagger
+ * /Freelancing/api/v1/payments/{paymentId}:
+ *   get:
+ *     summary: Get payment by ID
+ *     tags: [Payments]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: paymentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Payment retrieved successfully
+ */
+router.get('/:paymentId', authenticate, getPaymentById);
+
+/**
+ * @swagger
+ * /Freelancing/api/v1/payments/{paymentId}/refund:
+ *   post:
+ *     summary: Refund a payment
+ *     tags: [Payments]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: paymentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Payment refunded successfully
+ */
+router.post('/:paymentId/refund', authenticate, refundPayment);
+
+module.exports = router;
