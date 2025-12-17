@@ -5,7 +5,7 @@ const portfolioItemSchema = new Schema({
 
     freelancer: {
         type: Schema.Types.ObjectId,
-        ref: 'User', 
+        ref: 'User',
         required: true
     },
     title: {
@@ -26,7 +26,11 @@ const portfolioItemSchema = new Schema({
             required: true
         }
     ],
-    projectUrl: {
+    githubUrl: {
+        type: String,
+        trim: true
+    },
+    liveUrl: {
         type: String,
         trim: true
     },
@@ -46,11 +50,19 @@ const portfolioItemSchema = new Schema({
         default: 0,
         min: 0
     },
+    likedBy: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    }],
     views: {
         type: Number,
         default: 0,
         min: 0
     },
+    viewedBy: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    }],
     isPublic: {
         type: Boolean,
         default: true

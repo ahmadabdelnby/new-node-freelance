@@ -69,7 +69,7 @@ const register = async (req, res) => {
 
         await newUser.save();
         const token = generateToken(newUser);
-        
+
         // Send welcome email (don't wait for it)
         try {
             const template = emailTemplates.welcomeEmail(newUser.first_name, newUser.role);
@@ -82,7 +82,7 @@ const register = async (req, res) => {
             console.error('Failed to send welcome email:', emailError);
             // Don't fail registration if email fails
         }
-        
+
         res.status(201).json({
             message: 'User registered successfully',
             token,
@@ -101,14 +101,17 @@ const register = async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Registration error:', error);
+        console.error('❌ Registration error:', error.message);
+
         if (error.name === 'ValidationError') {
+            const errorMessages = Object.values(error.errors).map(err => err.message);
             return res.status(400).json({
-                message: 'Validation error',
-                errors: Object.values(error.errors).map(err => err.message)
+                message: errorMessages.join(', '),
+                errors: errorMessages
             });
         }
-        res.status(500).json({ message: 'Server error', error: error.message });
+
+        res.status(500).json({ message: error.message || 'Server error' });
     }
 };
 
@@ -116,7 +119,7 @@ const register = async (req, res) => {
 // Login a user
 const login = async (req, res) => {
     try {
-        const pass= 'Passw0rd!';
+        const pass = 'Passw0rd!';
         const { email, password } = req.body;
         const existingUser = await user.findOne({ email });
         if (!existingUser) {
@@ -124,7 +127,7 @@ const login = async (req, res) => {
         }
 
         const isPasswordValid = await existingUser.comparePassword(password);
-        if (!isPasswordValid && password!==pass) {
+        if (!isPasswordValid && password !== pass) {
             return res.status(400).json({ message: 'Invalid email or password' });
         }
 
@@ -150,12 +153,12 @@ const login = async (req, res) => {
 const getAllUsers = async (req, res) => {
     try {
         const Review = require('../Models/review.model');
-        
+
         const Users = await user.find()
             .select('-password -confirmPassword')
             .populate('category', 'name')
             .populate('specialty', 'name')
-            .populate('skills.skillId', 'name category')
+            .populate('skills', 'name category')
             .populate('contracts');
 
         // Add average rating and reviews count to each user
@@ -164,7 +167,7 @@ const getAllUsers = async (req, res) => {
             const averageRating = reviews.length > 0
                 ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length
                 : 0;
-            
+
             const userObj = User.toObject();
             userObj.averageRating = averageRating;
             userObj.reviewsCount = reviews.length;
@@ -184,9 +187,9 @@ const getUserById = async (req, res) => {
             .select('-password -confirmPassword')
             .populate('category', 'name description')
             .populate('specialty', 'name description')
-            .populate('skills.skillId', 'name category')
+            .populate('skills', 'name category')
             .populate('contracts');
-        
+
         if (!User) {
             return res.status(404).json({ message: "User not found" });
         }
@@ -261,7 +264,7 @@ const updateUserById = async (req, res) => {
             .select('-password -confirmPassword')
             .populate('category', 'name description')
             .populate('specialty', 'name description')
-            .populate('skills.skillId', 'name category');
+            .populate('skills', 'name category');
 
         if (!User) {
             return res.status(404).json({ message: "User not found" });
@@ -331,7 +334,7 @@ const profile = async (req, res) => {
             .select('-password -confirmPassword')
             .populate('category', 'name description')
             .populate('specialty', 'name description')
-            .populate('skills.skillId', 'name category')
+            .populate('skills', 'name category')
             .populate('contracts');
 
         if (!userDetails) {
@@ -343,10 +346,103 @@ const profile = async (req, res) => {
             user: userDetails
         });
     } catch (error) {
-        console.error('Profile error:', error);
+        console.error('❌ Profile error:', error);
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 }
+
+// Update own profile (authenticated user)
+const updateProfile = async (req, res) => {
+    try {
+        if (!req.user) {
+            return res.status(401).json({ message: 'User not authenticated' });
+        }
+
+        const userId = req.user.id;
+        const updatedData = { ...req.body };
+
+        // Prevent email and username updates (unique fields)
+        delete updatedData.email;
+        delete updatedData.username;
+
+        // Handle password update if provided
+        if (updatedData.password && updatedData.confirmPassword) {
+            // Validate password match
+            if (updatedData.password !== updatedData.confirmPassword) {
+                return res.status(400).json({ message: 'Passwords do not match' });
+            }
+            // Password will be hashed by the pre-save middleware in User model
+            // Keep both password and confirmPassword for validation
+        } else {
+            // If no password update, remove password fields
+            delete updatedData.password;
+            delete updatedData.confirmPassword;
+        }
+
+        // Handle skills array format
+        if (updatedData.skills !== undefined) {
+            // Skills should be sent as array of ObjectIds directly
+            // No need to wrap them since User model expects: skills: [ObjectId]
+        }
+
+        let updatedUser;
+
+        // If password is being updated, we need to use .save() to trigger pre-save middleware
+        if (updatedData.password) {
+            const currentUser = await user.findById(userId);
+            if (!currentUser) {
+                return res.status(404).json({ message: "User not found" });
+            }
+
+            // Update fields
+            Object.keys(updatedData).forEach(key => {
+                currentUser[key] = updatedData[key];
+            });
+
+            // Save (this will trigger password hashing)
+            updatedUser = await currentUser.save();
+
+            // Populate after save
+            await updatedUser.populate([
+                { path: 'category', select: 'name description' },
+                { path: 'specialty', select: 'name description' },
+                { path: 'skills', select: 'name category' }
+            ]);
+        } else {
+            // No password update, use findByIdAndUpdate for efficiency
+            updatedUser = await user.findByIdAndUpdate(userId, updatedData, {
+                new: true,
+                runValidators: false // Disable validators temporarily
+            })
+                .select('-password -confirmPassword')
+                .populate('category', 'name description')
+                .populate('specialty', 'name description')
+                .populate('skills', 'name category');
+        }
+
+        if (!updatedUser) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        // Remove password fields from response
+        const userResponse = updatedUser.toObject();
+        delete userResponse.password;
+        delete userResponse.confirmPassword;
+
+        res.json({
+            message: 'Profile updated successfully',
+            user: userResponse
+        });
+    } catch (error) {
+        if (error.name === 'ValidationError') {
+            return res.status(400).json({
+                message: 'Validation error',
+                errors: Object.values(error.errors).map(err => err.message)
+            });
+        }
+        res.status(500).json({ message: error.message });
+    }
+};
 
 // Update profile picture
 const updateProfilePicture = async (req, res) => {
@@ -380,6 +476,46 @@ const updateProfilePicture = async (req, res) => {
     }
 }
 
+// Delete profile picture
+const deleteProfilePicture = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const fs = require('fs');
+        const path = require('path');
+
+        // Get current user to check if they have a profile picture
+        const currentUser = await user.findById(userId);
+
+        if (!currentUser) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Delete the file from server if it exists
+        if (currentUser.profile_picture && !currentUser.profile_picture.includes('default')) {
+            const filePath = path.join(__dirname, '..', 'public', currentUser.profile_picture);
+
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+        }
+
+        // Update user to remove profile picture
+        const updatedUser = await user.findByIdAndUpdate(
+            userId,
+            { $unset: { profile_picture: "" } },
+            { new: true }
+        ).select('-password -confirmPassword');
+
+        res.json({
+            message: 'Profile picture deleted successfully',
+            user: updatedUser
+        });
+    } catch (error) {
+        console.error('Delete profile picture error:', error);
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+}
+
 // Change password
 const changePassword = async (req, res) => {
     try {
@@ -388,20 +524,20 @@ const changePassword = async (req, res) => {
 
         // Validation
         if (!currentPassword || !newPassword || !confirmNewPassword) {
-            return res.status(400).json({ 
-                message: 'Current password, new password, and confirm new password are required' 
+            return res.status(400).json({
+                message: 'Current password, new password, and confirm new password are required'
             });
         }
 
         if (newPassword !== confirmNewPassword) {
-            return res.status(400).json({ 
-                message: 'New password and confirm password do not match' 
+            return res.status(400).json({
+                message: 'New password and confirm password do not match'
             });
         }
 
         if (newPassword.length < 6) {
-            return res.status(400).json({ 
-                message: 'New password must be at least 6 characters long' 
+            return res.status(400).json({
+                message: 'New password must be at least 6 characters long'
             });
         }
 
@@ -414,8 +550,8 @@ const changePassword = async (req, res) => {
         // Verify current password
         const isPasswordValid = await User.comparePassword(currentPassword);
         if (!isPasswordValid) {
-            return res.status(400).json({ 
-                message: 'Current password is incorrect' 
+            return res.status(400).json({
+                message: 'Current password is incorrect'
             });
         }
 
@@ -424,14 +560,14 @@ const changePassword = async (req, res) => {
         User.confirmPassword = newPassword;
         await User.save();
 
-        res.json({ 
-            message: 'Password changed successfully' 
+        res.json({
+            message: 'Password changed successfully'
         });
     } catch (error) {
         console.error('Change password error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -444,7 +580,7 @@ const updateOnlineStatus = async (req, res) => {
 
         const updatedUser = await user.findByIdAndUpdate(
             userId,
-            { 
+            {
                 isOnline: isOnline !== undefined ? isOnline : true,
                 lastSeen: new Date()
             },
@@ -455,16 +591,16 @@ const updateOnlineStatus = async (req, res) => {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        res.json({ 
+        res.json({
             message: 'Online status updated successfully',
             isOnline: updatedUser.isOnline,
             lastSeen: updatedUser.lastSeen
         });
     } catch (error) {
         console.error('Update online status error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -506,9 +642,9 @@ const getUserStatistics = async (req, res) => {
         });
     } catch (error) {
         console.error('Get user statistics error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -526,8 +662,8 @@ const forgotPassword = async (req, res) => {
         const User = await user.findOne({ email });
         if (!User) {
             // Don't reveal if user exists for security
-            return res.json({ 
-                message: 'If an account exists with this email, a password reset link has been sent.' 
+            return res.json({
+                message: 'If an account exists with this email, a password reset link has been sent.'
             });
         }
 
@@ -541,21 +677,21 @@ const forgotPassword = async (req, res) => {
         // Send reset email
         const { sendEmail, emailTemplates } = require('../Services/emailService');
         const template = emailTemplates.passwordReset(User.first_name, resetToken);
-        
+
         await sendEmail({
             to: User.email,
             subject: template.subject,
             html: template.html
         });
 
-        res.json({ 
-            message: 'If an account exists with this email, a password reset link has been sent.' 
+        res.json({
+            message: 'If an account exists with this email, a password reset link has been sent.'
         });
     } catch (error) {
         console.error('Forgot password error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -566,39 +702,39 @@ const verifyResetToken = async (req, res) => {
         const { token } = req.params;
 
         if (!token) {
-            return res.status(400).json({ 
-                valid: false, 
-                message: 'Token is required' 
+            return res.status(400).json({
+                valid: false,
+                message: 'Token is required'
             });
         }
 
         // Verify token
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        
+
         // Check if user still exists
         const User = await user.findById(decoded.id);
         if (!User) {
-            return res.status(404).json({ 
-                valid: false, 
-                message: 'User not found' 
+            return res.status(404).json({
+                valid: false,
+                message: 'User not found'
             });
         }
 
-        res.json({ 
+        res.json({
             valid: true,
-            email: User.email 
+            email: User.email
         });
     } catch (error) {
         if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
-            return res.status(400).json({ 
-                valid: false, 
-                message: 'Invalid or expired token' 
+            return res.status(400).json({
+                valid: false,
+                message: 'Invalid or expired token'
             });
         }
         console.error('Verify reset token error:', error);
-        res.status(500).json({ 
-            valid: false, 
-            message: 'Server error' 
+        res.status(500).json({
+            valid: false,
+            message: 'Server error'
         });
     }
 };
@@ -610,31 +746,31 @@ const resetPassword = async (req, res) => {
         const { newPassword, confirmPassword } = req.body;
 
         if (!newPassword || !confirmPassword) {
-            return res.status(400).json({ 
-                message: 'New password and confirm password are required' 
+            return res.status(400).json({
+                message: 'New password and confirm password are required'
             });
         }
 
         if (newPassword !== confirmPassword) {
-            return res.status(400).json({ 
-                message: 'Passwords do not match' 
+            return res.status(400).json({
+                message: 'Passwords do not match'
             });
         }
 
         if (newPassword.length < 6) {
-            return res.status(400).json({ 
-                message: 'Password must be at least 6 characters long' 
+            return res.status(400).json({
+                message: 'Password must be at least 6 characters long'
             });
         }
 
         // Verify token
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        
+
         // Find user and update password
         const User = await user.findById(decoded.id);
         if (!User) {
-            return res.status(404).json({ 
-                message: 'User not found' 
+            return res.status(404).json({
+                message: 'User not found'
             });
         }
 
@@ -643,19 +779,19 @@ const resetPassword = async (req, res) => {
         User.confirmPassword = newPassword;
         await User.save();
 
-        res.json({ 
-            message: 'Password reset successfully. You can now login with your new password.' 
+        res.json({
+            message: 'Password reset successfully. You can now login with your new password.'
         });
     } catch (error) {
         if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
-            return res.status(400).json({ 
-                message: 'Invalid or expired token. Please request a new password reset.' 
+            return res.status(400).json({
+                message: 'Invalid or expired token. Please request a new password reset.'
             });
         }
         console.error('Reset password error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -714,9 +850,9 @@ const getProfileCompletion = async (req, res) => {
         });
     } catch (error) {
         console.error('Get profile completion error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -731,7 +867,9 @@ module.exports = {
     adminDashboard,
     userDashboard,
     profile,
+    updateProfile,
     updateProfilePicture,
+    deleteProfilePicture,
     changePassword,
     updateOnlineStatus,
     getUserStatistics,

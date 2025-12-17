@@ -7,9 +7,22 @@ const {
     getMyPortfolioItems,
     updatePortfolioItem,
     deletePortfolioItem,
-    likePortfolioItem
+    likePortfolioItem,
+    incrementViews,
+    toggleFeatured
 } = require('../Controllers/portfolioController');
 const authenticate = require('../middleware/authenticationMiddle');
+
+// Optional authentication middleware
+const optionalAuth = (req, res, next) => {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (token) {
+        // If token exists, use authenticate middleware
+        return authenticate(req, res, next);
+    }
+    // If no token, continue without authentication
+    next();
+};
 
 /**
  * @swagger
@@ -164,6 +177,44 @@ router.delete('/:id', authenticate, deletePortfolioItem);
  *       200:
  *         description: Portfolio item liked
  */
-router.post('/:id/like', likePortfolioItem);
+router.post('/:id/like', optionalAuth, likePortfolioItem);
+
+/**
+ * @swagger
+ * /Freelancing/api/v1/portfolio/{id}/view:
+ *   post:
+ *     summary: Increment portfolio item views
+ *     tags: [Portfolio]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Views incremented
+ */
+router.post('/:id/view', optionalAuth, incrementViews);
+
+/**
+ * @swagger
+ * /Freelancing/api/v1/portfolio/{id}/featured:
+ *   patch:
+ *     summary: Toggle featured status
+ *     tags: [Portfolio]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Featured status toggled
+ */
+router.patch('/:id/featured', authenticate, toggleFeatured);
 
 module.exports = router;

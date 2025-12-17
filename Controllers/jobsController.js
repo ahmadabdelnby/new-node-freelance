@@ -3,19 +3,46 @@ const job = require('../Models/Jobs');
 // Create a new job
 const createJob = async (req, res) => {
     try {
-        const { client, title, description, specialty, skills, budget } = req.body;
+        // Get client ID from authenticated user
+        const clientId = req.user.id;
+        const { title, description, specialty, skills, budget, duration, deadline } = req.body;
+
+        console.log('📝 Creating new job:', {
+            clientId,
+            title,
+            specialty,
+            skillsCount: skills?.length,
+            budget,
+            duration
+        });
+
         const newJob = new job({
-            client,
+            client: clientId,
             title,
             description,
             specialty,
             skills,
-            budget
+            budget,
+            duration: duration ? {
+                value: duration,
+                unit: 'days'
+            } : undefined,
+            deadline
         });
+
         await newJob.save();
+
+        // Populate the job data before sending response
+        await newJob.populate([
+            { path: 'client', select: 'first_name last_name email profile_picture' },
+            { path: 'specialty', select: 'name description' },
+            { path: 'skills', select: 'name' }
+        ]);
+
+        console.log('✅ Job created successfully:', newJob._id);
         res.status(201).json({ message: 'Job created successfully', job: newJob });
     } catch (error) {
-        console.error('Error creating job:', error);
+        console.error('❌ Error creating job:', error);
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
@@ -38,13 +65,15 @@ const getAllJobs = async (req, res) => {
 // Search and filter jobs
 const searchJobs = async (req, res) => {
     try {
-        const { 
-            search, 
-            category, 
-            specialty, 
-            budgetType, 
-            minBudget, 
-            maxBudget, 
+        console.log('🔍 Search request received:', req.query);
+
+        const {
+            search,
+            category,
+            specialty,
+            budgetType,
+            minBudget,
+            maxBudget,
             status = 'open',
             skills,
             experienceLevel,
@@ -56,9 +85,13 @@ const searchJobs = async (req, res) => {
 
         let query = { status };
 
-        // Text search using MongoDB text index (faster than regex)
-        if (search) {
-            query.$text = { $search: search };
+        // Text search - if no search term provided, don't use text search
+        if (search && search.trim()) {
+            // Use regex for more flexible search (allows partial matches)
+            query.$or = [
+                { title: { $regex: search, $options: 'i' } },
+                { description: { $regex: search, $options: 'i' } }
+            ];
         }
 
         // Filter by specialty
@@ -91,9 +124,6 @@ const searchJobs = async (req, res) => {
 
         // Build sort object
         const sort = {};
-        if (search) {
-            sort.score = { $meta: 'textScore' }; // Sort by relevance first
-        }
         sort[sortBy] = order === 'asc' ? 1 : -1;
 
         // Pagination
@@ -102,7 +132,6 @@ const searchJobs = async (req, res) => {
         // Execute query with pagination
         const [jobs, total] = await Promise.all([
             job.find(query)
-                .select(search ? { score: { $meta: 'textScore' } } : {})
                 .populate('client', 'first_name last_name email profile_picture_url')
                 .populate('specialty', 'name')
                 .populate('skills', 'name')
@@ -111,6 +140,12 @@ const searchJobs = async (req, res) => {
                 .limit(parseInt(limit)),
             job.countDocuments(query)
         ]);
+
+        console.log('✅ Search results:', {
+            query,
+            totalFound: total,
+            returned: jobs.length
+        });
 
         res.status(200).json({
             jobs,
@@ -189,9 +224,9 @@ const incrementJobViews = async (req, res) => {
             return res.status(404).json({ message: 'Job not found' });
         }
 
-        res.json({ 
+        res.json({
             message: 'View count updated',
-            views: updatedJob.views 
+            views: updatedJob.views
         });
     } catch (error) {
         console.error('Error incrementing views:', error);
@@ -224,7 +259,7 @@ const getFeaturedJobs = async (req, res) => {
     try {
         const { limit = 10 } = req.query;
 
-        const jobs = await job.find({ 
+        const jobs = await job.find({
             featured: true,
             status: 'open'
         })
@@ -257,14 +292,14 @@ const closeJob = async (req, res) => {
 
         // Verify the user is the job owner
         if (Job.client.toString() !== userId) {
-            return res.status(403).json({ 
-                message: 'Only the job owner can close this job' 
+            return res.status(403).json({
+                message: 'Only the job owner can close this job'
             });
         }
 
         if (Job.status === 'completed' || Job.status === 'cancelled') {
-            return res.status(400).json({ 
-                message: 'Job is already closed' 
+            return res.status(400).json({
+                message: 'Job is already closed'
             });
         }
 
@@ -272,7 +307,7 @@ const closeJob = async (req, res) => {
         Job.closedAt = new Date();
         await Job.save();
 
-        res.json({ 
+        res.json({
             message: 'Job closed successfully',
             job: Job
         });

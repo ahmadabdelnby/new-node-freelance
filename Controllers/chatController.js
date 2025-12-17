@@ -1,5 +1,6 @@
 const { Message, Conversation } = require('../Models/Chat');
 const mongoose = require('mongoose');
+const { getIO } = require('../services/socketService');
 
 // Create or get conversation
 const createOrGetConversation = async (req, res) => {
@@ -8,8 +9,8 @@ const createOrGetConversation = async (req, res) => {
         const { participantId, jobId, proposalId } = req.body;
 
         if (!participantId) {
-            return res.status(400).json({ 
-                message: 'participantId is required' 
+            return res.status(400).json({
+                message: 'participantId is required'
             });
         }
 
@@ -17,10 +18,10 @@ const createOrGetConversation = async (req, res) => {
         let conversation = await Conversation.findOne({
             participants: { $all: [userId, participantId] }
         })
-        .populate('participants', 'first_name last_name profile_picture_url email')
-        .populate('job', 'title')
-        .populate('proposal')
-        .populate('lastMessage');
+            .populate('participants', 'first_name last_name profile_picture profile_picture_url email')
+            .populate('job', 'title')
+            .populate('proposal')
+            .populate('lastMessage');
 
         if (!conversation) {
             // Create new conversation
@@ -30,7 +31,7 @@ const createOrGetConversation = async (req, res) => {
                 proposal: proposalId
             });
 
-            await conversation.populate('participants', 'first_name last_name profile_picture_url email');
+            await conversation.populate('participants', 'first_name last_name profile_picture profile_picture_url email');
         }
 
         res.status(200).json({
@@ -39,9 +40,9 @@ const createOrGetConversation = async (req, res) => {
         });
     } catch (error) {
         console.error('Create/Get conversation error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -54,10 +55,10 @@ const getMyConversations = async (req, res) => {
         const conversations = await Conversation.find({
             participants: userId
         })
-        .populate('participants', 'first_name last_name profile_picture_url email')
-        .populate('job', 'title')
-        .populate('lastMessage')
-        .sort({ lastMessageAt: -1 });
+            .populate('participants', 'first_name last_name profile_picture profile_picture_url email')
+            .populate('job', 'title')
+            .populate('lastMessage')
+            .sort({ lastMessageAt: -1 });
 
         res.status(200).json({
             count: conversations.length,
@@ -65,9 +66,9 @@ const getMyConversations = async (req, res) => {
         });
     } catch (error) {
         console.error('Get conversations error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -75,20 +76,22 @@ const getMyConversations = async (req, res) => {
 // Send message
 const sendMessage = async (req, res) => {
     try {
+        console.log('📨 [RECEIVE] Received sendMessage request from user:', req.user.id);
         const senderId = req.user.id;
         const { conversationId, content, attachments } = req.body;
+        console.log('📨 [RECEIVE] Request body:', { conversationId, content });
 
         if (!conversationId || !content) {
-            return res.status(400).json({ 
-                message: 'conversationId and content are required' 
+            return res.status(400).json({
+                message: 'conversationId and content are required'
             });
         }
 
         // Check if conversation exists and user is participant
         const conversation = await Conversation.findById(conversationId);
         if (!conversation) {
-            return res.status(404).json({ 
-                message: 'Conversation not found' 
+            return res.status(404).json({
+                message: 'Conversation not found'
             });
         }
 
@@ -97,8 +100,8 @@ const sendMessage = async (req, res) => {
         );
 
         if (!isParticipant) {
-            return res.status(403).json({ 
-                message: 'You are not a participant in this conversation' 
+            return res.status(403).json({
+                message: 'You are not a participant in this conversation'
             });
         }
 
@@ -115,17 +118,36 @@ const sendMessage = async (req, res) => {
         conversation.lastMessageAt = new Date();
         await conversation.save();
 
-        await message.populate('sender', 'first_name last_name profile_picture_url');
+        await message.populate('sender', 'first_name last_name profile_picture profile_picture_url');
+
+        // Emit real-time event to conversation room
+        console.log(`📨 [SEND] Emitting new_message to conversation:${conversationId}`);
+        const io = getIO();
+        io.to(`conversation:${conversationId}`).emit('new_message', message);
+        console.log(`✅ [SEND] Message emitted to conversation room`);
+
+        // Notify other participants
+        const otherParticipants = conversation.participants.filter(
+            p => p.toString() !== senderId
+        );
+
+        console.log(`🔔 [NOTIFY] Notifying ${otherParticipants.length} other participants:`, otherParticipants);
+        otherParticipants.forEach(participantId => {
+            console.log(`🔔 [NOTIFY] Sending notification to user:${participantId}`);
+            io.to(`user:${participantId}`).emit('new_message_notification', {
+                conversationId,
+                message
+            });
+        });
 
         res.status(201).json({
-            message: 'Message sent successfully',
-            data: message
+            message: message
         });
     } catch (error) {
         console.error('Send message error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -140,8 +162,8 @@ const getConversationMessages = async (req, res) => {
         // Check if user is participant
         const conversation = await Conversation.findById(conversationId);
         if (!conversation) {
-            return res.status(404).json({ 
-                message: 'Conversation not found' 
+            return res.status(404).json({
+                message: 'Conversation not found'
             });
         }
 
@@ -150,15 +172,15 @@ const getConversationMessages = async (req, res) => {
         );
 
         if (!isParticipant) {
-            return res.status(403).json({ 
-                message: 'You are not a participant in this conversation' 
+            return res.status(403).json({
+                message: 'You are not a participant in this conversation'
             });
         }
 
         const skip = (page - 1) * limit;
 
         const messages = await Message.find({ conversation: conversationId })
-            .populate('sender', 'first_name last_name profile_picture_url')
+            .populate('sender', 'first_name last_name profile_picture profile_picture_url')
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(parseInt(limit));
@@ -176,9 +198,9 @@ const getConversationMessages = async (req, res) => {
         });
     } catch (error) {
         console.error('Get messages error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -191,15 +213,15 @@ const markAsRead = async (req, res) => {
 
         const message = await Message.findById(messageId);
         if (!message) {
-            return res.status(404).json({ 
-                message: 'Message not found' 
+            return res.status(404).json({
+                message: 'Message not found'
             });
         }
 
         // Only recipient can mark as read
         if (message.sender.toString() === userId) {
-            return res.status(400).json({ 
-                message: 'Cannot mark your own message as read' 
+            return res.status(400).json({
+                message: 'Cannot mark your own message as read'
             });
         }
 
@@ -212,9 +234,9 @@ const markAsRead = async (req, res) => {
         });
     } catch (error) {
         console.error('Mark as read error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -227,15 +249,15 @@ const deleteMessage = async (req, res) => {
 
         const message = await Message.findById(messageId);
         if (!message) {
-            return res.status(404).json({ 
-                message: 'Message not found' 
+            return res.status(404).json({
+                message: 'Message not found'
             });
         }
 
         // Only sender can delete
         if (message.sender.toString() !== userId) {
-            return res.status(403).json({ 
-                message: 'You can only delete your own messages' 
+            return res.status(403).json({
+                message: 'You can only delete your own messages'
             });
         }
 
@@ -246,9 +268,9 @@ const deleteMessage = async (req, res) => {
         });
     } catch (error) {
         console.error('Delete message error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -261,30 +283,30 @@ const editMessage = async (req, res) => {
         const { content } = req.body;
 
         if (!content || content.trim().length === 0) {
-            return res.status(400).json({ 
-                message: 'Content is required' 
+            return res.status(400).json({
+                message: 'Content is required'
             });
         }
 
         const message = await Message.findById(messageId);
         if (!message) {
-            return res.status(404).json({ 
-                message: 'Message not found' 
+            return res.status(404).json({
+                message: 'Message not found'
             });
         }
 
         // Only sender can edit
         if (message.sender.toString() !== userId) {
-            return res.status(403).json({ 
-                message: 'You can only edit your own messages' 
+            return res.status(403).json({
+                message: 'You can only edit your own messages'
             });
         }
 
         // Check if message was sent within last 5 minutes
         const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
         if (message.createdAt < fiveMinutesAgo) {
-            return res.status(400).json({ 
-                message: 'Messages can only be edited within 5 minutes' 
+            return res.status(400).json({
+                message: 'Messages can only be edited within 5 minutes'
             });
         }
 
@@ -299,9 +321,9 @@ const editMessage = async (req, res) => {
         });
     } catch (error) {
         console.error('Edit message error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -314,8 +336,8 @@ const markAllMessagesAsRead = async (req, res) => {
 
         const conversation = await Conversation.findById(conversationId);
         if (!conversation) {
-            return res.status(404).json({ 
-                message: 'Conversation not found' 
+            return res.status(404).json({
+                message: 'Conversation not found'
             });
         }
 
@@ -324,8 +346,8 @@ const markAllMessagesAsRead = async (req, res) => {
             p => p.toString() === userId
         );
         if (!isParticipant) {
-            return res.status(403).json({ 
-                message: 'You are not a participant in this conversation' 
+            return res.status(403).json({
+                message: 'You are not a participant in this conversation'
             });
         }
 
@@ -344,15 +366,29 @@ const markAllMessagesAsRead = async (req, res) => {
             }
         );
 
+        // Notify other participants via Socket.IO
+        const io = req.app.get('io');
+        if (io) {
+            conversation.participants.forEach(participantId => {
+                if (participantId.toString() !== userId) {
+                    io.to(`user:${participantId}`).emit('messageRead', {
+                        conversationId,
+                        readBy: userId,
+                        readAt: new Date()
+                    });
+                }
+            });
+        }
+
         res.status(200).json({
             message: 'All messages marked as read',
             updatedCount: result.modifiedCount
         });
     } catch (error) {
         console.error('Mark all as read error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -381,9 +417,9 @@ const getUnreadCount = async (req, res) => {
         });
     } catch (error) {
         console.error('Get unread count error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -396,8 +432,8 @@ const archiveConversation = async (req, res) => {
 
         const conversation = await Conversation.findById(conversationId);
         if (!conversation) {
-            return res.status(404).json({ 
-                message: 'Conversation not found' 
+            return res.status(404).json({
+                message: 'Conversation not found'
             });
         }
 
@@ -406,14 +442,14 @@ const archiveConversation = async (req, res) => {
             p => p.toString() === userId
         );
         if (!isParticipant) {
-            return res.status(403).json({ 
-                message: 'You are not a participant in this conversation' 
+            return res.status(403).json({
+                message: 'You are not a participant in this conversation'
             });
         }
 
         // Toggle archive status
         const isArchived = conversation.archivedBy.includes(userId);
-        
+
         if (isArchived) {
             // Unarchive
             conversation.archivedBy = conversation.archivedBy.filter(
@@ -433,9 +469,9 @@ const archiveConversation = async (req, res) => {
         });
     } catch (error) {
         console.error('Archive conversation error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };

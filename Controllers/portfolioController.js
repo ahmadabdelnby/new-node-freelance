@@ -5,32 +5,32 @@ const mongoose = require('mongoose');
 const createPortfolioItem = async (req, res) => {
     try {
         const freelancerId = req.user.id;
-        const { title, description, images, projectUrl, skills, dateCompleted } = req.body;
+        const { title, description, images, githubUrl, liveUrl, skills, dateCompleted } = req.body;
 
         // Validation
         if (!title || !description || !images || !skills || !dateCompleted) {
-            return res.status(400).json({ 
-                message: 'All required fields must be provided' 
+            return res.status(400).json({
+                message: 'All required fields must be provided'
             });
         }
 
         if (!Array.isArray(images) || images.length === 0) {
-            return res.status(400).json({ 
-                message: 'At least one image is required' 
+            return res.status(400).json({
+                message: 'At least one image is required'
             });
         }
 
         if (!Array.isArray(skills) || skills.length === 0) {
-            return res.status(400).json({ 
-                message: 'At least one skill is required' 
+            return res.status(400).json({
+                message: 'At least one skill is required'
             });
         }
 
         // Check if user already has 10 portfolio items
         const existingItemsCount = await PortfolioItem.countDocuments({ freelancer: freelancerId });
         if (existingItemsCount >= 10) {
-            return res.status(400).json({ 
-                message: 'Maximum 10 portfolio items allowed per user' 
+            return res.status(400).json({
+                message: 'Maximum 10 portfolio items allowed per user'
             });
         }
 
@@ -39,7 +39,8 @@ const createPortfolioItem = async (req, res) => {
             title,
             description,
             images,
-            projectUrl,
+            githubUrl,
+            liveUrl,
             skills,
             dateCompleted
         });
@@ -52,9 +53,9 @@ const createPortfolioItem = async (req, res) => {
         });
     } catch (error) {
         console.error('Create portfolio item error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -62,16 +63,17 @@ const createPortfolioItem = async (req, res) => {
 // Get all portfolio items (public)
 const getAllPortfolioItems = async (req, res) => {
     try {
-        const { freelancerId, skillId } = req.query;
-        
+        const { freelancerId, skillId, featured } = req.query;
+
         let query = {};
         if (freelancerId) query.freelancer = freelancerId;
         if (skillId) query.skills = skillId;
+        if (featured === 'true') query.isFeatured = true;
 
         const portfolioItems = await PortfolioItem.find(query)
             .populate('freelancer', 'first_name last_name profile_picture_url')
             .populate('skills', 'name')
-            .sort({ createdAt: -1 });
+            .sort({ isFeatured: -1, views: -1, createdAt: -1 });
 
         res.status(200).json({
             count: portfolioItems.length,
@@ -79,9 +81,9 @@ const getAllPortfolioItems = async (req, res) => {
         });
     } catch (error) {
         console.error('Get portfolio items error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -96,8 +98,8 @@ const getPortfolioItemById = async (req, res) => {
             .populate('skills', 'name');
 
         if (!portfolioItem) {
-            return res.status(404).json({ 
-                message: 'Portfolio item not found' 
+            return res.status(404).json({
+                message: 'Portfolio item not found'
             });
         }
 
@@ -108,9 +110,9 @@ const getPortfolioItemById = async (req, res) => {
         res.status(200).json(portfolioItem);
     } catch (error) {
         console.error('Get portfolio item error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -130,9 +132,9 @@ const getMyPortfolioItems = async (req, res) => {
         });
     } catch (error) {
         console.error('Get my portfolio items error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -147,20 +149,20 @@ const updatePortfolioItem = async (req, res) => {
         const portfolioItem = await PortfolioItem.findById(id);
 
         if (!portfolioItem) {
-            return res.status(404).json({ 
-                message: 'Portfolio item not found' 
+            return res.status(404).json({
+                message: 'Portfolio item not found'
             });
         }
 
         // Check ownership
         if (portfolioItem.freelancer.toString() !== freelancerId) {
-            return res.status(403).json({ 
-                message: 'You can only update your own portfolio items' 
+            return res.status(403).json({
+                message: 'You can only update your own portfolio items'
             });
         }
 
         // Update fields
-        const allowedFields = ['title', 'description', 'images', 'projectUrl', 'skills', 'dateCompleted'];
+        const allowedFields = ['title', 'description', 'images', 'githubUrl', 'liveUrl', 'skills', 'dateCompleted'];
         allowedFields.forEach(field => {
             if (updateData[field] !== undefined) {
                 portfolioItem[field] = updateData[field];
@@ -176,9 +178,9 @@ const updatePortfolioItem = async (req, res) => {
         });
     } catch (error) {
         console.error('Update portfolio item error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -192,15 +194,15 @@ const deletePortfolioItem = async (req, res) => {
         const portfolioItem = await PortfolioItem.findById(id);
 
         if (!portfolioItem) {
-            return res.status(404).json({ 
-                message: 'Portfolio item not found' 
+            return res.status(404).json({
+                message: 'Portfolio item not found'
             });
         }
 
         // Check ownership
         if (portfolioItem.freelancer.toString() !== freelancerId) {
-            return res.status(403).json({ 
-                message: 'You can only delete your own portfolio items' 
+            return res.status(403).json({
+                message: 'You can only delete your own portfolio items'
             });
         }
 
@@ -211,9 +213,9 @@ const deletePortfolioItem = async (req, res) => {
         });
     } catch (error) {
         console.error('Delete portfolio item error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -222,27 +224,157 @@ const deletePortfolioItem = async (req, res) => {
 const likePortfolioItem = async (req, res) => {
     try {
         const { id } = req.params;
+        const userId = req.user?.id;
 
         const portfolioItem = await PortfolioItem.findById(id);
 
         if (!portfolioItem) {
-            return res.status(404).json({ 
-                message: 'Portfolio item not found' 
+            return res.status(404).json({
+                message: 'Portfolio item not found'
             });
         }
 
-        portfolioItem.likes += 1;
+        // If user is authenticated
+        if (userId) {
+            // Check if user already liked
+            const alreadyLiked = portfolioItem.likedBy.includes(userId);
+
+            if (alreadyLiked) {
+                // Unlike: remove user from likedBy and decrement
+                portfolioItem.likedBy = portfolioItem.likedBy.filter(
+                    id => id.toString() !== userId
+                );
+                portfolioItem.likes = Math.max(0, portfolioItem.likes - 1);
+            } else {
+                // Like: add user to likedBy and increment
+                portfolioItem.likedBy.push(userId);
+                portfolioItem.likes += 1;
+            }
+
+            await portfolioItem.save();
+
+            // Populate fields before sending
+            await portfolioItem.populate('freelancer', 'first_name last_name profile_picture_url');
+            await portfolioItem.populate('skills', 'name');
+
+            res.status(200).json({
+                message: alreadyLiked ? 'Portfolio item unliked' : 'Portfolio item liked',
+                likes: portfolioItem.likes,
+                isLiked: !alreadyLiked,
+                portfolioItem: portfolioItem
+            });
+        } else {
+            // Anonymous user - just increment
+            portfolioItem.likes += 1;
+            await portfolioItem.save();
+
+            await portfolioItem.populate('freelancer', 'first_name last_name profile_picture_url');
+            await portfolioItem.populate('skills', 'name');
+
+            res.status(200).json({
+                message: 'Portfolio item liked',
+                likes: portfolioItem.likes,
+                isLiked: true,
+                portfolioItem: portfolioItem
+            });
+        }
+    } catch (error) {
+        console.error('Like portfolio item error:', error);
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
+        });
+    }
+};
+
+// Increment views
+const incrementViews = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user?.id; // Optional authentication
+
+        const portfolioItem = await PortfolioItem.findById(id);
+
+        if (!portfolioItem) {
+            return res.status(404).json({
+                message: 'Portfolio item not found'
+            });
+        }
+
+        // If user is authenticated
+        if (userId) {
+            // Don't count views from the owner
+            if (portfolioItem.freelancer.toString() === userId) {
+                return res.status(200).json({
+                    message: 'Owner view not counted',
+                    views: portfolioItem.views
+                });
+            }
+
+            // Check if user already viewed this item
+            if (portfolioItem.viewedBy.includes(userId)) {
+                return res.status(200).json({
+                    message: 'Already viewed',
+                    views: portfolioItem.views
+                });
+            }
+
+            // Add user to viewedBy and increment views
+            portfolioItem.viewedBy.push(userId);
+            portfolioItem.views += 1;
+            await portfolioItem.save();
+        } else {
+            // Anonymous user - just increment
+            portfolioItem.views += 1;
+            await portfolioItem.save();
+        }
+
+        res.status(200).json({
+            message: 'Views incremented',
+            views: portfolioItem.views
+        });
+    } catch (error) {
+        console.error('Increment views error:', error);
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
+        });
+    }
+};
+
+// Toggle featured status (Owner only)
+const toggleFeatured = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user.id;
+
+        const portfolioItem = await PortfolioItem.findById(id);
+
+        if (!portfolioItem) {
+            return res.status(404).json({
+                message: 'Portfolio item not found'
+            });
+        }
+
+        // Check ownership
+        if (portfolioItem.freelancer.toString() !== userId) {
+            return res.status(403).json({
+                message: 'Not authorized to update this portfolio item'
+            });
+        }
+
+        portfolioItem.isFeatured = !portfolioItem.isFeatured;
         await portfolioItem.save();
 
         res.status(200).json({
-            message: 'Portfolio item liked',
-            likes: portfolioItem.likes
+            message: `Portfolio item ${portfolioItem.isFeatured ? 'featured' : 'unfeatured'} successfully`,
+            isFeatured: portfolioItem.isFeatured
         });
     } catch (error) {
-        console.error('Like portfolio item error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        console.error('Toggle featured error:', error);
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -254,5 +386,7 @@ module.exports = {
     getMyPortfolioItems,
     updatePortfolioItem,
     deletePortfolioItem,
-    likePortfolioItem
+    likePortfolioItem,
+    incrementViews,
+    toggleFeatured
 };

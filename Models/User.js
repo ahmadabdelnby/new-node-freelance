@@ -48,12 +48,14 @@ const userSchema = new mongoose.Schema({
         type: String,
         required: true,
         trim: true,
+        minLength: 3,
         maxLength: 100
     },
     last_name: {
         type: String,
         required: true,
         trim: true,
+        minLength: 3,
         maxLength: 100
     },
     profile_picture: {
@@ -64,7 +66,7 @@ const userSchema = new mongoose.Schema({
     phone_number: {
         type: String,
         default: null,
-        required: true,
+        required: false,
         trim: true,
         maxLength: 20
     },
@@ -89,7 +91,7 @@ const userSchema = new mongoose.Schema({
         type: String,
         enum: ['user', 'admin'],
         default: 'user'
-    } , 
+    },
     aboutMe: {
         type: String,
         default: null,
@@ -127,6 +129,19 @@ const userSchema = new mongoose.Schema({
         type: Number,
         default: 0,
         min: 0
+    },
+    // Verification fields
+    isEmailVerified: {
+        type: Boolean,
+        default: false
+    },
+    isPhoneVerified: {
+        type: Boolean,
+        default: false
+    },
+    isIdentityVerified: {
+        type: Boolean,
+        default: false
     },
     // New fields for better user experience
     isOnline: {
@@ -195,9 +210,20 @@ const userSchema = new mongoose.Schema({
     }
 }, { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } });
 
-// Virtual field for backward compatibility with profile_picture_url
-userSchema.virtual('profile_picture_url').get(function() {
-    return this.profile_picture;
+// Virtual field for profile picture URL with full path
+userSchema.virtual('profile_picture_url').get(function () {
+    if (!this.profile_picture) return null;
+
+    // If already a full URL, return as is
+    if (this.profile_picture.startsWith('http://') || this.profile_picture.startsWith('https://')) {
+        return this.profile_picture;
+    }
+
+    // Otherwise, construct full URL
+    const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+    // Remove leading slash if exists to avoid double slashes
+    const path = this.profile_picture.startsWith('/') ? this.profile_picture.substring(1) : this.profile_picture;
+    return `${baseUrl}/${path}`;
 });
 
 // Indexes for better query performance (email & username already indexed via unique:true)
@@ -208,7 +234,7 @@ userSchema.index({ availability: 1 });
 userSchema.index({ createdAt: -1 });
 
 // Update lastSeen when user performs any action
-userSchema.methods.updateLastSeen = function() {
+userSchema.methods.updateLastSeen = function () {
     this.lastSeen = new Date();
     return this.save();
 };

@@ -1,15 +1,18 @@
 const express = require('express');
 const router = express.Router();
-const { 
-    deleteUserById, 
+const {
+    deleteUserById,
     getAllUsers,
     getUserById,
-    updateUserById, 
+    updateUserById,
     updateProfilePicture,
+    deleteProfilePicture,
     changePassword,
     updateOnlineStatus,
     getUserStatistics,
-    getProfileCompletion
+    getProfileCompletion,
+    profile,
+    updateProfile
 } = require('../Controllers/userController');
 const authentic = require('../middleware/authenticationMiddle');
 const authorize = require('../middleware/authorizationMiddle');
@@ -27,6 +30,50 @@ const { validateChangePassword, validateMongoId, validateProfileUpdate } = requi
  *         description: Users retrieved successfully
  */
 router.get('/', getAllUsers);
+
+/**
+ * @swagger
+ * /Freelancing/api/v1/users/profile:
+ *   get:
+ *     summary: Get current user profile
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Profile retrieved successfully
+ */
+router.get('/profile', authentic, profile);
+
+/**
+ * @swagger
+ * /Freelancing/api/v1/users/profile:
+ *   put:
+ *     summary: Update current user profile
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               aboutMe:
+ *                 type: string
+ *               skills:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     skillId:
+ *                       type: string
+ *     responses:
+ *       200:
+ *         description: Profile updated successfully
+ */
+router.put('/profile', authentic, updateProfile);
 
 /**
  * @swagger
@@ -128,6 +175,20 @@ router.delete('/:id', authentic, authorize('admin'), deleteUserById);
  *         description: Profile picture updated successfully
  */
 router.put('/profile/picture', authentic, uploadProfilePicture.single('profile_picture'), updateProfilePicture);
+
+/**
+ * @swagger
+ * /Freelancing/api/v1/users/profile/picture:
+ *   delete:
+ *     summary: Delete user profile picture
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Profile picture deleted successfully
+ */
+router.delete('/profile/picture', authentic, deleteProfilePicture);
 
 /**
  * @swagger

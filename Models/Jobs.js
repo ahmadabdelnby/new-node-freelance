@@ -2,50 +2,50 @@ const mongoose = require('mongoose');
 
 const jobSchema = new mongoose.Schema({
     // Reference to the client who posted the job(user id)
-    client: { 
-        type: mongoose.Schema.Types.ObjectId, 
-        ref: 'User', 
-        required: true 
+    client: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true
     },
-    title: { 
-        type: String, 
+    title: {
+        type: String,
         required: true,
         trim: true,
         maxLength: 200
     },
-    description: { 
-        type: String, 
+    description: {
+        type: String,
         required: true,
         trim: true,
         minLength: 50,
         maxLength: 5000
     },
-    specialty: { 
-        type: mongoose.Schema.Types.ObjectId, 
-        ref: 'Specialty', 
-        required: true 
+    specialty: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Specialty',
+        required: true
     },
     // An array of references to the specific skills needed
-    skills: [{ 
-        type: mongoose.Schema.Types.ObjectId, 
-        ref: 'Skill' 
+    skills: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Skill'
     }],
     budget: {
-        type: { 
-            type: String, 
-            enum: ['hourly', 'fixed'], 
-            required: true 
+        type: {
+            type: String,
+            enum: ['hourly', 'fixed'],
+            required: true
         },
-        amount: { 
-            type: Number, 
+        amount: {
+            type: Number,
             required: true,
             min: [0, 'Budget must be greater than 0']
         }
     },
-    status: { 
-        type: String, 
-        enum: ['open', 'in_progress', 'completed', 'cancelled'], 
-        default: 'open' 
+    status: {
+        type: String,
+        enum: ['open', 'in_progress', 'completed', 'cancelled'],
+        default: 'open'
     },
     // New fields
     deadline: {
@@ -73,11 +73,6 @@ const jobSchema = new mongoose.Schema({
         fileName: String,
         fileType: String
     }],
-    experienceLevel: {
-        type: String,
-        enum: ['entry', 'intermediate', 'expert'],
-        default: 'intermediate'
-    },
     visibility: {
         type: String,
         enum: ['public', 'private', 'invited_only'],
@@ -96,9 +91,9 @@ const jobSchema = new mongoose.Schema({
     closedAt: {
         type: Date
     }
-}, { 
+}, {
     // Automatically adds createdAt and updatedAt fields
-    timestamps: true 
+    timestamps: true
 });
 
 // Indexes for better performance

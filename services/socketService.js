@@ -17,7 +17,7 @@ const initializeSocket = (server) => {
     io.use(async (socket, next) => {
         try {
             const token = socket.handshake.auth.token;
-            
+
             if (!token) {
                 return next(new Error('Authentication error'));
             }
@@ -25,7 +25,7 @@ const initializeSocket = (server) => {
             const payload = jwt.verify(token, process.env.JWT_SECRET);
             socket.userId = payload.id;
             socket.userEmail = payload.email;
-            
+
             next();
         } catch (error) {
             next(new Error('Authentication error'));
@@ -38,8 +38,19 @@ const initializeSocket = (server) => {
         // Join user's personal room
         socket.join(`user:${socket.userId}`);
 
+        // Notify all users that this user is online
+        socket.broadcast.emit('user_online', { userId: socket.userId });
+
+        // Send list of all online users to the newly connected user
+        const onlineUserIds = Array.from(io.sockets.sockets.keys())
+            .map(socketId => io.sockets.sockets.get(socketId)?.userId)
+            .filter(Boolean);
+        socket.emit('online_users', onlineUserIds);
+        console.log(`📤 Sent online users list to ${socket.userId}:`, onlineUserIds);
+
         // Join conversation
         socket.on('join_conversation', async (conversationId) => {
+            console.log(`🚪 [JOIN] User ${socket.userId} joining conversation ${conversationId}`);
             try {
                 // Verify user is participant
                 const conversation = await Conversation.findById(conversationId);
@@ -58,10 +69,18 @@ const initializeSocket = (server) => {
                 }
 
                 socket.join(`conversation:${conversationId}`);
-                console.log(`User ${socket.userId} joined conversation ${conversationId}`);
+                console.log(`✅ [JOIN] User ${socket.userId} joined conversation ${conversationId}`);
             } catch (error) {
+                console.error(`❌ [JOIN] Error:`, error.message);
                 socket.emit('error', { message: error.message });
             }
+        });
+
+        // Leave conversation
+        socket.on('leave_conversation', (conversationId) => {
+            console.log(`🚪 [LEAVE] User ${socket.userId} leaving conversation ${conversationId}`);
+            socket.leave(`conversation:${conversationId}`);
+            console.log(`✅ [LEAVE] User ${socket.userId} left conversation ${conversationId}`);
         });
 
         // Send message
@@ -98,16 +117,36 @@ const initializeSocket = (server) => {
                 conversation.lastMessageAt = new Date();
                 await conversation.save();
 
-                await message.populate('sender', 'first_name last_name profile_picture_url');
+                await message.populate('sender', 'first_name last_name profile_picture profile_picture_url');
 
                 // Emit to all participants in the conversation
                 io.to(`conversation:${conversationId}`).emit('new_message', message);
 
-                // Notify other participants
+                // Check if other participants are online and mark as delivered
                 const otherParticipants = conversation.participants.filter(
                     p => p.toString() !== socket.userId
                 );
 
+                // Mark as delivered if any recipient is online
+                const onlineRecipients = otherParticipants.filter(participantId => {
+                    const room = io.sockets.adapter.rooms.get(`user:${participantId}`);
+                    return room && room.size > 0;
+                });
+
+                if (onlineRecipients.length > 0) {
+                    message.isDelivered = true;
+                    message.deliveredAt = new Date();
+                    await message.save();
+
+                    // Notify sender that message was delivered
+                    io.to(`user:${socket.userId}`).emit('messageDelivered', {
+                        messageId: message._id,
+                        conversationId,
+                        deliveredAt: message.deliveredAt
+                    });
+                }
+
+                // Notify other participants
                 otherParticipants.forEach(participantId => {
                     io.to(`user:${participantId}`).emit('new_message_notification', {
                         conversationId,
@@ -127,28 +166,6 @@ const initializeSocket = (server) => {
                 userId: socket.userId,
                 isTyping
             });
-        });
-
-        // Mark message as read
-        socket.on('mark_as_read', async (data) => {
-            try {
-                const { messageId } = data;
-                const message = await Message.findById(messageId);
-                
-                if (message && message.sender.toString() !== socket.userId) {
-                    message.isRead = true;
-                    message.readAt = new Date();
-                    await message.save();
-
-                    // Notify sender
-                    io.to(`user:${message.sender}`).emit('message_read', {
-                        messageId,
-                        readAt: message.readAt
-                    });
-                }
-            } catch (error) {
-                socket.emit('error', { message: error.message });
-            }
         });
 
         // Typing indicator
@@ -235,7 +252,10 @@ const initializeSocket = (server) => {
         // Disconnect and update status
         socket.on('disconnect', async () => {
             console.log(`User disconnected: ${socket.userId}`);
-            
+
+            // Notify all users that this user is offline
+            socket.broadcast.emit('user_offline', { userId: socket.userId });
+
             try {
                 const User = require('../Models/User');
                 await User.findByIdAndUpdate(socket.userId, {

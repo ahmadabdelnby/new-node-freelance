@@ -31,6 +31,13 @@ const messageSchema = new Schema({
     readAt: {
         type: Date
     },
+    isDelivered: {
+        type: Boolean,
+        default: false
+    },
+    deliveredAt: {
+        type: Date
+    },
     isEdited: {
         type: Boolean,
         default: false
@@ -53,8 +60,8 @@ const messageSchema = new Schema({
         },
         emoji: String
     }]
-}, { 
-    timestamps: true 
+}, {
+    timestamps: true
 });
 
 // Indexes for better performance
@@ -109,8 +116,8 @@ const conversationSchema = new Schema({
         type: Schema.Types.ObjectId,
         ref: 'User'
     }]
-}, { 
-    timestamps: true 
+}, {
+    timestamps: true
 });
 
 // Indexes for better performance
@@ -120,7 +127,7 @@ conversationSchema.index({ job: 1 });
 conversationSchema.index({ proposal: 1 });
 
 // Validate that conversation has exactly 2 participants
-conversationSchema.pre('save', function(next) {
+conversationSchema.pre('save', function (next) {
     if (this.participants.length !== 2) {
         return next(new Error('Conversation must have exactly 2 participants'));
     }

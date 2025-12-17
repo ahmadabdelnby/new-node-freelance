@@ -24,6 +24,7 @@ const proposalRoute = require('./Routes/proposalRoute');
 const reviewRoute = require("./Routes/ReviewRoute");
 const contractRoute = require("./Routes/contractRoute");
 const categoryRoute = require("./Routes/categoryRoute");
+const countryRoute = require("./Routes/countryRoute");
 const adminRoutes = require('./Routes/adminRoute');
 const favoriteRoute = require('./Routes/favoriteRoute');
 const portfolioRoute = require('./Routes/portfolioRoute');
@@ -38,19 +39,23 @@ dotenv.config();
 //middleware /must be added at the top
 app.use(express.json());
 app.use(cors({
-    origin: ['http://localhost:5000', 'http://localhost:5173', 'http://localhost:3001', 'http://localhost:4200'],
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+  origin: ['http://localhost:5000', 'http://localhost:5173', 'http://localhost:3001', 'http://localhost:4200'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 // Security middleware
-app.use(helmet()); // Set security HTTP headers
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow images to be loaded
+  contentSecurityPolicy: false, // Disable CSP for now (configure properly in production)
+}));
 // app.use(mongoSanitize()); // Prevent NoSQL injection - DISABLED: causing errors with query params
 app.use(apiLimiter); // Rate limiting
 
 //public folder for images
 app.use("/public", express.static("public"));
+app.use("/uploads", express.static("public/uploads")); // Serve uploaded files
 
 const swagger = swaggerJsDoc({
   definition: {
@@ -151,6 +156,7 @@ app.use('/Freelancing/api/v1/proposals', proposalRoute);
 app.use("/Freelancing/api/v1/reviews", reviewRoute);
 app.use("/Freelancing/api/v1/contracts", contractRoute);
 app.use("/Freelancing/api/v1/categories", categoryRoute);
+app.use("/Freelancing/api/v1/countries", countryRoute);
 app.use('/Freelancing/api/v1/admin', adminRoutes);
 app.use('/Freelancing/api/v1/favorites', favoriteRoute);
 app.use('/Freelancing/api/v1/portfolio', portfolioRoute);

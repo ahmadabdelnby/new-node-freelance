@@ -4,12 +4,12 @@ const path = require('path');
 const uploadProfilePicture = async (req, res) => {
     try {
         if (!req.file) {
-            return res.status(400).json({ 
-                message: 'No file uploaded' 
+            return res.status(400).json({
+                message: 'No file uploaded'
             });
         }
 
-        const fileUrl = `/public/uploads/profiles/${req.file.filename}`;
+        const fileUrl = `/uploads/profiles/${req.file.filename}`;
 
         res.status(200).json({
             message: 'Profile picture uploaded successfully',
@@ -18,9 +18,9 @@ const uploadProfilePicture = async (req, res) => {
         });
     } catch (error) {
         console.error('Upload profile picture error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -29,12 +29,12 @@ const uploadProfilePicture = async (req, res) => {
 const uploadPortfolioImages = async (req, res) => {
     try {
         if (!req.files || req.files.length === 0) {
-            return res.status(400).json({ 
-                message: 'No files uploaded' 
+            return res.status(400).json({
+                message: 'No files uploaded'
             });
         }
 
-        const fileUrls = req.files.map(file => `/public/uploads/portfolio/${file.filename}`);
+        const fileUrls = req.files.map(file => `/uploads/portfolio/${file.filename}`);
 
         res.status(200).json({
             message: 'Portfolio images uploaded successfully',
@@ -43,9 +43,9 @@ const uploadPortfolioImages = async (req, res) => {
         });
     } catch (error) {
         console.error('Upload portfolio images error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -54,13 +54,13 @@ const uploadPortfolioImages = async (req, res) => {
 const uploadAttachments = async (req, res) => {
     try {
         if (!req.files || req.files.length === 0) {
-            return res.status(400).json({ 
-                message: 'No files uploaded' 
+            return res.status(400).json({
+                message: 'No files uploaded'
             });
         }
 
         const attachments = req.files.map(file => ({
-            url: `/public/uploads/attachments/${file.filename}`,
+            url: `/uploads/attachments/${file.filename}`,
             fileName: file.originalname,
             size: file.size,
             mimetype: file.mimetype
@@ -73,9 +73,9 @@ const uploadAttachments = async (req, res) => {
         });
     } catch (error) {
         console.error('Upload attachments error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -87,8 +87,8 @@ const deleteFile = async (req, res) => {
         const { filePath } = req.body;
 
         if (!filePath) {
-            return res.status(400).json({ 
-                message: 'File path is required' 
+            return res.status(400).json({
+                message: 'File path is required'
             });
         }
 
@@ -97,8 +97,8 @@ const deleteFile = async (req, res) => {
 
         // Check if file exists
         if (!fs.existsSync(fullPath)) {
-            return res.status(404).json({ 
-                message: 'File not found' 
+            return res.status(404).json({
+                message: 'File not found'
             });
         }
 
@@ -110,9 +110,9 @@ const deleteFile = async (req, res) => {
         });
     } catch (error) {
         console.error('Delete file error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };

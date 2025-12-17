@@ -115,12 +115,24 @@ const validateJobCreation = [
         .withMessage('Specialty is required')
         .isMongoId()
         .withMessage('Invalid specialty ID'),
+    body('skills')
+        .optional()
+        .isArray()
+        .withMessage('Skills must be an array'),
+    body('skills.*')
+        .optional()
+        .isMongoId()
+        .withMessage('Invalid skill ID'),
     body('budget.type')
         .isIn(['hourly', 'fixed'])
         .withMessage('Budget type must be either hourly or fixed'),
     body('budget.amount')
         .isFloat({ min: 0 })
         .withMessage('Budget amount must be a positive number'),
+    body('duration')
+        .optional()
+        .isInt({ min: 1 })
+        .withMessage('Duration must be at least 1 day'),
     validate
 ];
 
@@ -244,8 +256,8 @@ const validateProfileUpdate = [
     body('aboutMe')
         .optional()
         .trim()
-        .isLength({ min: 50, max: 2000 })
-        .withMessage('About me must be between 50 and 2000 characters'),
+        .isLength({ min: 10, max: 2000 })
+        .withMessage('About me must be between 10 and 2000 characters'),
     body('hourlyRate')
         .optional()
         .isFloat({ min: 0 })
