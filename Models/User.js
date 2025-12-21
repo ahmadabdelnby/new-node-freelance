@@ -162,6 +162,11 @@ const userSchema = new mongoose.Schema({
         default: 0,
         min: 0
     },
+    balance: {
+        type: Number,
+        default: 1000, // Default balance for testing
+        min: 0
+    },
     responseTime: {
         type: Number, // in hours
         default: null,

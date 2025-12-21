@@ -10,7 +10,9 @@ const {
     deleteContractById, 
     getAllContracts,
     completeContract,
-    updateHoursWorked
+    updateHoursWorked,
+    submitWork,
+    reviewWork
 } = require('../Controllers/contractController');
 const authentic = require('../middleware/authenticationMiddle');
 
@@ -201,5 +203,83 @@ router.patch('/:id/complete', authentic, completeContract);
  *         description: Hours worked updated successfully
  */
 router.patch('/:id/hours', authentic, updateHoursWorked);
+
+/**
+ * @swagger
+ * /Freelancing/api/v1/contracts/{id}/submit-work:
+ *   post:
+ *     summary: Submit work deliverables (Freelancer only)
+ *     tags: [Contracts]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Contract ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               description:
+ *                 type: string
+ *               files:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     name:
+ *                       type: string
+ *                     url:
+ *                       type: string
+ *                     size:
+ *                       type: number
+ *                     type:
+ *                       type: string
+ *     responses:
+ *       200:
+ *         description: Work submitted successfully
+ */
+router.post('/:contractId/submit-work', authentic, submitWork);
+
+/**
+ * @swagger
+ * /Freelancing/api/v1/contracts/{contractId}/review/{deliverableId}:
+ *   patch:
+ *     summary: Review work (Accept or Request Revision) - Client only
+ *     tags: [Contracts]
+ *     parameters:
+ *       - in: path
+ *         name: contractId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Contract ID
+ *       - in: path
+ *         name: deliverableId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Deliverable ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               action:
+ *                 type: string
+ *                 enum: [accept, request_revision]
+ *               revisionNote:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Work reviewed successfully
+ */
+router.patch('/:contractId/review/:deliverableId', authentic, reviewWork);
 
 module.exports = router;

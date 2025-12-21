@@ -4,7 +4,8 @@ const {
   createProposal,
   editProposal, 
   getMyProposals, 
-  hireProposal, 
+  hireProposal,
+  rejectProposal,
   deleteProposal,
   getProposalsByJob,
   withdrawProposal,
@@ -29,6 +30,9 @@ router.get('/job/:jobId', authenticate, getProposalsByJob);
 
 // PATCH /api/proposals/:id/hire - hire a freelancer for a job (client only)
 router.patch('/:id/hire', authenticate, hireProposal);
+
+// PATCH /api/proposals/:id/reject - reject a proposal (client only)
+router.patch('/:id/reject', authenticate, rejectProposal);
 
 // PATCH /api/proposals/:id/withdraw - withdraw a proposal
 router.patch('/:id/withdraw', authenticate, withdrawProposal);

@@ -53,22 +53,29 @@ const uploadPortfolioImages = async (req, res) => {
 // Upload attachments
 const uploadAttachments = async (req, res) => {
     try {
-        if (!req.files || req.files.length === 0) {
+        // Handle both single file and multiple files
+        const files = req.files || (req.file ? [req.file] : []);
+        
+        if (files.length === 0) {
             return res.status(400).json({
                 message: 'No files uploaded'
             });
         }
 
-        const attachments = req.files.map(file => ({
+        const attachments = files.map(file => ({
             url: `/uploads/attachments/${file.filename}`,
+            path: `/uploads/attachments/${file.filename}`,
             fileName: file.originalname,
             size: file.size,
             mimetype: file.mimetype
         }));
 
+        // If single file, return single object, otherwise return array
+        const response = files.length === 1 ? attachments[0] : attachments;
+
         res.status(200).json({
             message: 'Attachments uploaded successfully',
-            attachments: attachments,
+            ...response,
             count: attachments.length
         });
     } catch (error) {

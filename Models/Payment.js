@@ -33,7 +33,7 @@ const paymentSchema = new Schema({
     },
     status: {
         type: String,
-        enum: ['pending', 'processing', 'completed', 'failed', 'refunded', 'cancelled'],
+        enum: ['pending', 'processing', 'completed', 'failed', 'refunded', 'cancelled', 'held', 'released'],
         default: 'pending'
     },
     transactionId: {

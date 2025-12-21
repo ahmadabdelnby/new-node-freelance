@@ -287,7 +287,8 @@ const getUserDashboard = async (req, res) => {
             }
         ]);
 
-        const earnings = paymentsReceived.length > 0 ? paymentsReceived[0].total : 0;
+        // Use totalEarnings from user model, or calculate from completed payments
+        const earnings = user.totalEarnings || (paymentsReceived.length > 0 ? paymentsReceived[0].total : 0);
         const spent = paymentsSent.length > 0 ? paymentsSent[0].total : 0;
 
         stats = {
@@ -312,7 +313,7 @@ const getUserDashboard = async (req, res) => {
             financials: {
                 earned: earnings,
                 spent: spent,
-                balance: earnings - spent
+                balance: user.balance || 0  // Get actual balance from user model
             },
             recentContracts: myContracts.slice(0, 5)
         };

@@ -32,6 +32,7 @@ const uploadRoute = require('./Routes/uploadRoute');
 const chatRoute = require('./Routes/chatRoute');
 const paymentRoute = require('./Routes/paymentRoute');
 const statisticsRoute = require('./Routes/statisticsRoute');
+const fundsRoute = require('./Routes/fundsRoute');
 
 //dotenv config - must be at top
 dotenv.config();
@@ -164,6 +165,7 @@ app.use('/Freelancing/api/v1/upload', uploadRoute);
 app.use('/Freelancing/api/v1/chat', chatRoute);
 app.use('/Freelancing/api/v1/payments', paymentRoute);
 app.use('/Freelancing/api/v1/statistics', statisticsRoute);
+app.use('/Freelancing/api/v1/funds', fundsRoute);
 
 //mongoose connection
 mongoose

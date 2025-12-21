@@ -73,7 +73,49 @@ const contractSchema = new Schema({
         type: Number,
         default: 0,
         min: 0
-    }
+    },
+    // Work submissions/deliverables
+    deliverables: [{
+        submittedBy: {
+            type: Schema.Types.ObjectId,
+            ref: 'User',
+            required: true
+        },
+        description: {
+            type: String,
+            required: true,
+            trim: true
+        },
+        files: {
+            type: [{
+                name: { type: String },
+                url: { type: String },
+                size: { type: Number },
+                type: { type: String }
+            }],
+            default: []
+        },
+        status: {
+            type: String,
+            enum: ['pending_review', 'accepted', 'revision_requested'],
+            default: 'pending_review'
+        },
+        submittedAt: {
+            type: Date,
+            default: Date.now
+        },
+        reviewedAt: {
+            type: Date
+        },
+        reviewedBy: {
+            type: Schema.Types.ObjectId,
+            ref: 'User'
+        },
+        revisionNote: {
+            type: String,
+            trim: true
+        }
+    }]
 }, { 
     // Automatically adds createdAt and updatedAt fields
     timestamps: true 

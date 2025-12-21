@@ -260,6 +260,134 @@ const emailTemplates = {
                 </div>
             </div>
         `
+    }),
+
+    proposalAccepted: (freelancerName, jobTitle, amount, contractId) => ({
+        subject: `🎊 Congratulations! Your Proposal Was Accepted`,
+        html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9f9f9; padding: 30px; border-radius: 10px;">
+                <div style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 30px; text-align: center; border-radius: 10px;">
+                    <h1>🎊 Proposal Accepted!</h1>
+                </div>
+                <div style="padding: 30px; background: white; margin-top: 20px; border-radius: 10px;">
+                    <h2>Congratulations ${freelancerName}!</h2>
+                    <p>Your proposal for "<strong>${jobTitle}</strong>" has been accepted by the client!</p>
+                    <div style="background: #d4edda; border-left: 4px solid #28a745; padding: 20px; margin: 20px 0;">
+                        <p style="margin: 0;"><strong>📋 Contract Details:</strong></p>
+                        <p style="margin: 10px 0 0 0;">Project Budget: <strong>$${amount}</strong></p>
+                        <p style="margin: 5px 0 0 0;">Status: <strong>Active</strong></p>
+                    </div>
+                    <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0;">
+                        <p style="margin: 0;"><strong>💰 Payment Information:</strong></p>
+                        <p style="margin: 5px 0 0 0;">The client's payment of $${amount} has been secured in escrow and will be released upon successful completion of the project.</p>
+                    </div>
+                    <p>Next steps:</p>
+                    <ul>
+                        <li>View your contract details</li>
+                        <li>Start working on the project</li>
+                        <li>Communicate with the client</li>
+                        <li>Submit deliverables when ready</li>
+                    </ul>
+                    <div style="text-align: center; margin-top: 30px;">
+                        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/contracts/${contractId}" style="display: inline-block; padding: 12px 30px; background: #28a745; color: white; text-decoration: none; border-radius: 5px;">View Contract</a>
+                    </div>
+                    <p style="margin-top: 30px;">Best of luck with your project!<br>The Freelance Platform Team</p>
+                </div>
+                <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
+                    <p>© 2025 Freelance Platform. All rights reserved.</p>
+                </div>
+            </div>
+        `
+    }),
+
+    contractCreated: (clientName, jobTitle, freelancerName, contractId) => ({
+        subject: `✅ Contract Created: ${jobTitle}`,
+        html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9f9f9; padding: 30px; border-radius: 10px;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px;">
+                    <h1>✅ Contract Created</h1>
+                </div>
+                <div style="padding: 30px; background: white; margin-top: 20px; border-radius: 10px;">
+                    <h2>Hi ${clientName},</h2>
+                    <p>Your contract for "<strong>${jobTitle}</strong>" has been successfully created with <strong>${freelancerName}</strong>.</p>
+                    <div style="background: #d4edda; border-left: 4px solid #28a745; padding: 20px; margin: 20px 0;">
+                        <p style="margin: 0;"><strong>✓ Payment Secured</strong></p>
+                        <p style="margin: 5px 0 0 0;">Your payment has been placed in escrow and will be released to the freelancer upon project completion.</p>
+                    </div>
+                    <p>The freelancer can now start working on your project. You'll receive updates throughout the process.</p>
+                    <div style="text-align: center; margin-top: 30px;">
+                        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/contracts/${contractId}" style="display: inline-block; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px;">View Contract</a>
+                    </div>
+                    <p style="margin-top: 30px;">Best regards,<br>The Freelance Platform Team</p>
+                </div>
+                <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
+                    <p>© 2025 Freelance Platform. All rights reserved.</p>
+                </div>
+            </div>
+        `
+    }),
+
+    paymentReleased: (freelancerName, jobTitle, amount, contractId) => ({
+        subject: `💰 Payment Released: $${amount}`,
+        html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9f9f9; padding: 30px; border-radius: 10px;">
+                <div style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 30px; text-align: center; border-radius: 10px;">
+                    <h1>💰 Payment Released!</h1>
+                </div>
+                <div style="padding: 30px; background: white; margin-top: 20px; border-radius: 10px;">
+                    <h2>Great news, ${freelancerName}!</h2>
+                    <p>The client has marked the contract for "<strong>${jobTitle}</strong>" as complete, and your payment has been released!</p>
+                    <div style="background: #d4edda; border-left: 4px solid #28a745; padding: 20px; margin: 20px 0; text-align: center;">
+                        <p style="margin: 0; font-size: 14px; color: #155724;">Payment Amount</p>
+                        <p style="margin: 10px 0 0 0; font-size: 36px; font-weight: bold; color: #28a745;">$${amount}</p>
+                        <p style="margin: 10px 0 0 0; font-size: 12px; color: #155724;">✓ Released from Escrow</p>
+                    </div>
+                    <div style="background: #d1ecf1; border-left: 4px solid #17a2b8; padding: 15px; margin: 20px 0;">
+                        <p style="margin: 0;"><strong>ℹ️ Next Steps:</strong></p>
+                        <p style="margin: 5px 0 0 0;">The payment will be transferred to your account within 1-3 business days.</p>
+                        <p style="margin: 5px 0 0 0;">Don't forget to leave a review for the client!</p>
+                    </div>
+                    <div style="text-align: center; margin-top: 30px;">
+                        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/contracts/${contractId}" style="display: inline-block; padding: 12px 30px; background: #28a745; color: white; text-decoration: none; border-radius: 5px; margin-right: 10px;">View Contract</a>
+                        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/contracts/${contractId}/review" style="display: inline-block; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px;">Leave Review</a>
+                    </div>
+                    <p style="margin-top: 30px;">Congratulations on a successful project!<br>The Freelance Platform Team</p>
+                </div>
+                <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
+                    <p>© 2025 Freelance Platform. All rights reserved.</p>
+                </div>
+            </div>
+        `
+    }),
+
+    contractCompleted: (clientName, jobTitle, freelancerName, contractId) => ({
+        subject: `✅ Contract Completed: ${jobTitle}`,
+        html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9f9f9; padding: 30px; border-radius: 10px;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px;">
+                    <h1>✅ Contract Completed</h1>
+                </div>
+                <div style="padding: 30px; background: white; margin-top: 20px; border-radius: 10px;">
+                    <h2>Hi ${clientName},</h2>
+                    <p>You have successfully completed the contract for "<strong>${jobTitle}</strong>" with <strong>${freelancerName}</strong>.</p>
+                    <div style="background: #d4edda; border-left: 4px solid #28a745; padding: 20px; margin: 20px 0;">
+                        <p style="margin: 0;"><strong>✓ Payment Released</strong></p>
+                        <p style="margin: 5px 0 0 0;">The payment has been released from escrow to the freelancer.</p>
+                    </div>
+                    <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0;">
+                        <p style="margin: 0;"><strong>⭐ Please Leave a Review</strong></p>
+                        <p style="margin: 5px 0 0 0;">Your feedback helps other clients find great freelancers!</p>
+                    </div>
+                    <div style="text-align: center; margin-top: 30px;">
+                        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/contracts/${contractId}/review" style="display: inline-block; padding: 12px 30px; background: #ffc107; color: #000; text-decoration: none; border-radius: 5px;">Leave Review</a>
+                    </div>
+                    <p style="margin-top: 30px;">Thank you for using our platform!<br>The Freelance Platform Team</p>
+                </div>
+                <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
+                    <p>© 2025 Freelance Platform. All rights reserved.</p>
+                </div>
+            </div>
+        `
     })
 };
 
