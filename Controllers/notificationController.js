@@ -17,15 +17,19 @@ const createNotification = async (userId, type, content, linkUrl = '') => {
 
 const getUserNotifications = async (req, res, next) => {
   try {
-    const notifications = await Notification.find({ user: req.user._id })
+    // req.user.id comes from JWT token (not req.user._id)
+    const userId = req.user.id || req.user._id;
+
+    const notifications = await Notification.find({ user: userId })
       .sort({ createdAt: -1 });
-    
+
     res.status(200).json({
       success: true,
       count: notifications.length,
       data: notifications
     });
   } catch (err) {
+    console.error('❌ Error in getUserNotifications:', err);
     next(err);
   }
 };
@@ -72,16 +76,16 @@ const markAllAsRead = async (req, res, next) => {
   try {
     const result = await Notification.updateMany(
       { user: req.user._id, isRead: false },
-      { 
-        $set: { 
+      {
+        $set: {
           isRead: true,
           readAt: new Date()
-        } 
+        }
       }
     );
 
-    res.status(200).json({ 
-      success: true, 
+    res.status(200).json({
+      success: true,
       message: 'All notifications marked as read',
       updatedCount: result.modifiedCount
     });
@@ -98,8 +102,8 @@ const getUnreadCount = async (req, res, next) => {
       isRead: false
     });
 
-    res.status(200).json({ 
-      success: true, 
+    res.status(200).json({
+      success: true,
       unreadCount: count
     });
   } catch (err) {
@@ -114,8 +118,8 @@ const deleteAllNotifications = async (req, res, next) => {
       user: req.user._id
     });
 
-    res.status(200).json({ 
-      success: true, 
+    res.status(200).json({
+      success: true,
       message: 'All notifications deleted',
       deletedCount: result.deletedCount
     });

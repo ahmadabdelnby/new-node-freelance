@@ -26,21 +26,21 @@ const getMyContracts = async (req, res) => {
     try {
         console.log(req.user);
         const userId = req.user.id;
-        
+
         //my contracts as a client
         const clientContracts = await contract.find({ client: userId })
-            .populate('job', 'title description category budget')
-            .populate('client', 'first_name last_name email profile_picture')
-            .populate('freelancer', 'first_name last_name email profile_picture')
-            .populate('proposal', 'bidAmount coverLetter estimatedDuration')
+            .populate('job', 'title description category budget deadline duration')
+            .populate('client')
+            .populate('freelancer')
+            .populate('proposal', 'bidAmount coverLetter deliveryTime')
             .sort({ createdAt: -1 });
-            
+
         //my contracts as a freelancer
         const freelancerContracts = await contract.find({ freelancer: userId })
-            .populate('job', 'title description category budget')
-            .populate('client', 'first_name last_name email profile_picture')
-            .populate('freelancer', 'first_name last_name email profile_picture')
-            .populate('proposal', 'bidAmount coverLetter estimatedDuration')
+            .populate('job', 'title description category budget deadline duration')
+            .populate('client')
+            .populate('freelancer')
+            .populate('proposal', 'bidAmount coverLetter deliveryTime')
             .sort({ createdAt: -1 });
 
         if (clientContracts.length === 0 && freelancerContracts.length === 0) {
@@ -62,11 +62,11 @@ const getContractById = async (req, res) => {
     try {
         const { id } = req.params;
         const foundContract = await contract.findById(id)
-            .populate('job', 'title description category budget skills')
-            .populate('client', 'first_name last_name email profile_picture')
-            .populate('freelancer', 'first_name last_name email profile_picture')
-            .populate('proposal', 'bidAmount coverLetter estimatedDuration');
-            
+            .populate('job', 'title description category budget skills deadline duration')
+            .populate('client')
+            .populate('freelancer')
+            .populate('proposal', 'bidAmount coverLetter deliveryTime');
+
         if (!foundContract) {
             return res.status(404).json({ message: 'Contract not found' });
         }
@@ -109,8 +109,8 @@ const deleteContractById = async (req, res) => {
 const getAllContracts = async (req, res) => {
     try {
         const contracts = await contract.find()
-        .populate("client", "email")
-        .populate("freelancer", "email");
+            .populate("client", "email")
+            .populate("freelancer", "email");
         res.status(200).json(contracts);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -147,35 +147,46 @@ const completeContract = async (req, res) => {
         Contract.completedAt = new Date();
         await Contract.save();
 
-        // Update freelancer's completed jobs count and add payment to balance
+        // Update the related Job status to 'completed'
+        const Job = require('../Models/Jobs');
+        try {
+            await Job.findByIdAndUpdate(
+                Contract.job,
+                { status: 'completed' }
+            );
+            console.log('✅ Job status updated to completed');
+        } catch (jobError) {
+            console.error('⚠️ Error updating job status:', jobError);
+        }
+
+        // Update freelancer's completed jobs count (balance will be updated by releasePayment)
         const User = require('../Models/User');
-        const Payment = require('../Models/Payment');
-        
-        // Find the payment to get net amount
-        const contractPayment = await Payment.findOne({
-            contract: Contract._id,
-            status: 'held',
-            isEscrow: true
-        });
-        
-        const paymentToAdd = contractPayment ? contractPayment.netAmount : (Contract.agreedAmount * 0.90);
-        
+
         await User.findByIdAndUpdate(
             Contract.freelancer,
-            { 
-                $inc: { 
-                    completedJobs: 1,
-                    balance: paymentToAdd,
-                    totalEarnings: paymentToAdd
-                } 
+            {
+                $inc: {
+                    completedJobs: 1
+                }
             }
         );
-        console.log('✅ Freelancer completed jobs incremented and balance updated (+' + paymentToAdd + ')');
+        console.log('✅ Freelancer completed jobs incremented');
+
+        // Update Client completedJobsAsClient
+        await User.findByIdAndUpdate(
+            Contract.client,
+            {
+                $inc: {
+                    completedJobsAsClient: 1
+                }
+            }
+        );
+        console.log('📊 Client completedJobsAsClient incremented');
 
         // 🔥 RELEASE PAYMENT FROM ESCROW
         try {
             const Payment = require('../Models/Payment');
-            
+
             // Find the escrow payment for this contract
             const escrowPayment = await Payment.findOne({
                 contract: Contract._id,
@@ -185,36 +196,27 @@ const completeContract = async (req, res) => {
 
             if (escrowPayment) {
                 console.log('✅ Found escrow payment:', escrowPayment._id);
-                
-                // Release payment from escrow
+
+                // Calculate amounts
+                const platformFee = escrowPayment.platformFee || 0;
+                const freelancerAmount = escrowPayment.amount - platformFee;
+
+                console.log(`💵 Releasing payment: Total=$${escrowPayment.amount}, Fee=$${platformFee}, Freelancer=$${freelancerAmount}`);
+
+                // Add amount to freelancer balance (minus platform fee)
+                await User.updateOne(
+                    { _id: Contract.freelancer },
+                    { $inc: { balance: freelancerAmount, totalEarnings: freelancerAmount } }
+                );
+
+                // Update payment status
                 escrowPayment.status = 'released';
+                escrowPayment.completedAt = new Date();
                 escrowPayment.releasedAt = new Date();
+                escrowPayment.transactionId = 'TXN-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9).toUpperCase();
                 await escrowPayment.save();
 
-                // Process the payment (mock gateway)
-                const mockPaymentGateway = async (amount) => {
-                    // Simulate processing delay
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    return {
-                        success: true,
-                        transactionId: 'TXN-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9).toUpperCase(),
-                        message: 'Payment released successfully from escrow'
-                    };
-                };
-
-                const result = await mockPaymentGateway(escrowPayment.netAmount);
-                
-                if (result.success) {
-                    escrowPayment.status = 'completed';
-                    escrowPayment.transactionId = result.transactionId;
-                    escrowPayment.completedAt = new Date();
-                    escrowPayment.processedAt = new Date();
-                    await escrowPayment.save();
-                    
-                    console.log('✅ Payment completed:', escrowPayment.transactionId);
-                } else {
-                    console.error('❌ Payment processing failed:', result.message);
-                }
+                console.log('✅ Payment released from escrow:', escrowPayment.transactionId);
             } else {
                 console.log('⚠️ No escrow payment found for this contract');
             }
@@ -223,14 +225,16 @@ const completeContract = async (req, res) => {
             // Don't fail contract completion if payment fails
         }
 
-        // 🔥 UPDATE JOB STATUS
+        // 🔥 UPDATE JOB STATUS TO COMPLETED
+        // PROFESSIONAL: Completed jobs are removed from public listings
+        // They only appear in client/freelancer dashboards for reference and reviews
         try {
             const Job = require('../Models/Jobs');
             await Job.findByIdAndUpdate(Contract.job, {
                 status: 'completed',
                 closedAt: new Date()
             });
-            console.log('✅ Job marked as completed');
+            console.log('✅ Job marked as completed - Removed from public listings');
         } catch (jobError) {
             console.error('⚠️ Error updating job:', jobError.message);
         }
@@ -238,14 +242,15 @@ const completeContract = async (req, res) => {
         // 🔥 SEND NOTIFICATIONS
         try {
             const Notification = require('../Models/notification');
-            
+            const { getIO } = require('../services/socketService');
+
             // Notify freelancer about payment release
             await Notification.create({
                 user: Contract.freelancer,
                 type: 'payment_released',
-                title: 'Payment Released!',
-                message: `The client has completed the contract and your payment has been released.`,
-                link: `/contracts/${Contract._id}`,
+                content: `Payment has been released to you! Check your wallet`,
+                linkUrl: `/contracts/${Contract._id}`,
+                category: 'payment',
                 relatedContract: Contract._id
             });
 
@@ -253,13 +258,26 @@ const completeContract = async (req, res) => {
             await Notification.create({
                 user: Contract.client,
                 type: 'contract_completed',
-                title: 'Contract Completed',
-                message: `You have successfully completed the contract. Please leave a review for the freelancer.`,
-                link: `/contracts/${Contract._id}`,
+                content: `Contract completed successfully. Please leave a review for the freelancer`,
+                linkUrl: `/contracts/${Contract._id}`,
+                category: 'contract',
                 relatedContract: Contract._id
             });
 
-            console.log('✅ Notifications sent');
+            // Send Socket.io notifications
+            const io = getIO();
+            if (io) {
+                io.to(`user:${Contract.freelancer}`).emit('payment_released', {
+                    contractId: Contract._id,
+                    amount: netAmount
+                });
+
+                io.to(`user:${Contract.client}`).emit('contract_completed', {
+                    contractId: Contract._id
+                });
+            }
+
+            console.log('✅ Contract completion notifications sent');
         } catch (notifError) {
             console.error('⚠️ Failed to send notifications:', notifError.message);
         }
@@ -267,7 +285,7 @@ const completeContract = async (req, res) => {
         // 🔥 SEND EMAILS
         try {
             const { sendEmail, emailTemplates } = require('../services/emailService');
-            
+
             // Get freelancer and client info
             const freelancer = await User.findById(Contract.freelancer);
             const client = await User.findById(Contract.client);
@@ -416,24 +434,59 @@ const submitWork = async (req, res) => {
 
         foundContract.deliverables.push(newDeliverable);
         foundContract.deliveredAt = new Date();
-        
+
         await foundContract.save();
 
-        // Send notification to client
-        const io = req.app.get('io');
+        const Notification = require('../Models/notification');
+        const { getIO } = require('../services/socketService');
+        const emailService = require('../services/emailService');
+        const populatedContract = await contract.findById(contractId)
+            .populate('client', 'first_name last_name email')
+            .populate('freelancer', 'first_name last_name email')
+            .populate('job', 'title');
+
+        // Create notification for client about deliverable submission
+        await Notification.create({
+            user: populatedContract.client._id,
+            type: 'deliverable_submitted',
+            content: `${populatedContract.freelancer.first_name} has submitted work for "${populatedContract.job?.title || 'your project'}"`,
+            linkUrl: `/contracts/${contractId}`,
+            category: 'contract',
+            relatedContract: contractId
+        });
+
+        // Send Socket.io notification
+        const io = getIO();
         if (io) {
-            io.to(foundContract.client.toString()).emit('notification', {
-                type: 'work_submitted',
-                message: 'Freelancer has submitted work for review',
-                contractId: foundContract._id,
-                timestamp: new Date()
+            io.to(`user:${populatedContract.client._id}`).emit('deliverable_submitted', {
+                contractId: contractId,
+                freelancerName: populatedContract.freelancer.first_name,
+                jobTitle: populatedContract.job?.title
             });
+        }
+
+        console.log(`🔔 Deliverable submission notification sent to client`);
+
+        // Send email to client
+        try {
+            await emailService.sendWorkSubmittedEmail(
+                populatedContract.client.email,
+                {
+                    clientName: populatedContract.client.first_name,
+                    freelancerName: populatedContract.freelancer.first_name,
+                    jobTitle: populatedContract.job?.title || 'Contract',
+                    contractId: populatedContract._id
+                }
+            );
+            console.log(`📧 Work submitted email sent to client`);
+        } catch (emailError) {
+            console.error('Error sending work submitted email:', emailError);
         }
 
         res.status(200).json({
             message: 'Work submitted successfully',
-            deliverable: foundContract.deliverables[foundContract.deliverables.length - 1],
-            contract: foundContract
+            deliverable: populatedContract.deliverables[populatedContract.deliverables.length - 1],
+            contract: populatedContract
         });
     } catch (error) {
         console.error('Error submitting work:', error);
@@ -478,18 +531,21 @@ const reviewWork = async (req, res) => {
 
         if (action === 'accept') {
             deliverable.status = 'accepted';
-            
+
             // Complete the contract
             foundContract.status = 'completed';
             foundContract.completedAt = new Date();
-            
+
             await foundContract.save();
 
             // Update payment status and release funds
             const Payment = require('../Models/Payment');
             const User = require('../Models/User');
-            
-            const payment = await Payment.findOne({ 
+            const Job = require('../Models/Jobs');
+            const Notification = require('../Models/notification');
+            const emailService = require('../services/emailService');
+
+            const payment = await Payment.findOne({
                 contract: contractId,
                 status: 'held'
             });
@@ -503,20 +559,68 @@ const reviewWork = async (req, res) => {
                 const netAmount = payment.amount - payment.platformFee;
                 await User.updateOne(
                     { _id: foundContract.freelancer._id },
-                    { $inc: { balance: netAmount } }
+                    {
+                        $inc: {
+                            balance: netAmount,
+                            totalEarnings: netAmount,
+                            completedJobs: 1
+                        }
+                    }
                 );
 
                 console.log(`💰 Released $${netAmount} to freelancer ${foundContract.freelancer._id}`);
+                console.log(`📊 Updated freelancer stats: +$${netAmount} earnings, +1 completed job`);
             }
 
-            // Send notification to freelancer
+            // Update Client completedJobsAsClient
+            await User.updateOne(
+                { _id: foundContract.client._id },
+                { $inc: { completedJobsAsClient: 1 } }
+            );
+            console.log(`📊 Updated client stats: +1 completed job as client`);
+
+            // Update Job status to completed
+            await Job.findByIdAndUpdate(foundContract.job, {
+                status: 'completed'
+            });
+            console.log(`✅ Job status updated to completed`);
+
+            // Create notification for freelancer about work acceptance
+            await Notification.create({
+                user: foundContract.freelancer._id,
+                type: 'deliverable_accepted',
+                content: `Your work has been accepted! Payment of $${payment ? (payment.amount - payment.platformFee).toFixed(2) : foundContract.agreedAmount} released`,
+                linkUrl: `/contracts/${foundContract._id}`,
+                category: 'contract',
+                relatedContract: foundContract._id
+            });
+
+            // Send Socket.io notification to freelancer
+            const io = getIO();
             if (io) {
-                io.to(foundContract.freelancer._id.toString()).emit('notification', {
-                    type: 'work_accepted',
-                    message: 'Your work has been accepted! Payment released.',
+                io.to(`user:${foundContract.freelancer._id}`).emit('deliverable_accepted', {
                     contractId: foundContract._id,
-                    timestamp: new Date()
+                    amount: payment ? (payment.amount - payment.platformFee).toFixed(2) : foundContract.agreedAmount
                 });
+            }
+
+            console.log(`🔔 Work accepted notification sent to freelancer`);
+
+            // Send email to freelancer
+            try {
+                await emailService.sendWorkAcceptedEmail(
+                    foundContract.freelancer.email,
+                    {
+                        freelancerName: foundContract.freelancer.first_name,
+                        clientName: foundContract.client.first_name,
+                        jobTitle: foundContract.job?.title || 'Contract',
+                        amount: payment ? (payment.amount - payment.platformFee).toFixed(2) : foundContract.agreedAmount,
+                        contractId: foundContract._id
+                    }
+                );
+                console.log(`📧 Work accepted email sent to freelancer`);
+            } catch (emailError) {
+                console.error('Error sending work accepted email:', emailError);
             }
 
             res.status(200).json({
@@ -532,18 +636,49 @@ const reviewWork = async (req, res) => {
 
             deliverable.status = 'revision_requested';
             deliverable.revisionNote = revisionNote;
-            
+
             await foundContract.save();
 
-            // Send notification to freelancer
+            const Notification = require('../Models/notification');
+            const { getIO } = require('../services/socketService');
+            const emailService = require('../services/emailService');
+
+            // Create notification for freelancer about revision request
+            await Notification.create({
+                user: foundContract.freelancer._id,
+                type: 'deliverable_rejected',
+                content: `Client has requested revisions for your work`,
+                linkUrl: `/contracts/${foundContract._id}`,
+                category: 'contract',
+                relatedContract: foundContract._id
+            });
+
+            // Send Socket.io notification to freelancer
+            const io = getIO();
             if (io) {
-                io.to(foundContract.freelancer._id.toString()).emit('notification', {
-                    type: 'revision_requested',
-                    message: 'Client has requested revisions',
+                io.to(`user:${foundContract.freelancer._id}`).emit('deliverable_rejected', {
                     contractId: foundContract._id,
-                    revisionNote,
-                    timestamp: new Date()
+                    revisionNote: revisionNote
                 });
+            }
+
+            console.log(`🔔 Revision request notification sent to freelancer`);
+
+            // Send email to freelancer
+            try {
+                await emailService.sendRevisionRequestedEmail(
+                    foundContract.freelancer.email,
+                    {
+                        freelancerName: foundContract.freelancer.first_name,
+                        clientName: foundContract.client.first_name,
+                        jobTitle: foundContract.job?.title || 'Contract',
+                        revisionNote: revisionNote,
+                        contractId: foundContract._id
+                    }
+                );
+                console.log(`📧 Revision requested email sent to freelancer`);
+            } catch (emailError) {
+                console.error('Error sending revision requested email:', emailError);
             }
 
             res.status(200).json({

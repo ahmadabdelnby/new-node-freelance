@@ -11,6 +11,7 @@ const {
     updateOnlineStatus,
     getUserStatistics,
     getProfileCompletion,
+    getCurrentBalance,
     profile,
     updateProfile
 } = require('../Controllers/userController');
@@ -74,6 +75,29 @@ router.get('/profile', authentic, profile);
  *         description: Profile updated successfully
  */
 router.put('/profile', authentic, updateProfile);
+
+/**
+ * @swagger
+ * /Freelancing/api/v1/users/balance:
+ *   get:
+ *     summary: Get current user's balance
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Balance retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 balance:
+ *                   type: number
+ */
+router.get('/balance', authentic, getCurrentBalance);
 
 /**
  * @swagger

@@ -77,11 +77,13 @@ const conversationSchema = new Schema({
     }],
     job: {
         type: Schema.Types.ObjectId,
-        ref: 'Job'
+        ref: 'Job',
+        required: true // المحادثة يجب أن تكون مرتبطة بجوب
     },
     proposal: {
         type: Schema.Types.ObjectId,
-        ref: 'Proposal'
+        ref: 'Proposal',
+        required: true // المحادثة يجب أن تكون مرتبطة بـ proposal
     },
     lastMessage: {
         type: Schema.Types.ObjectId,

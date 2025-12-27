@@ -1,5 +1,6 @@
 const Payment = require('../Models/Payment');
 const Contract = require('../Models/Contract');
+const User = require('../Models/User');
 const crypto = require('crypto');
 
 // Generate mock transaction ID
@@ -11,10 +12,10 @@ const generateTransactionId = () => {
 const mockPaymentGateway = async (amount, paymentMethod) => {
     // Simulate processing delay
     await new Promise(resolve => setTimeout(resolve, 1000));
-    
+
     // Random success/failure (90% success rate)
     const isSuccess = Math.random() > 0.1;
-    
+
     if (isSuccess) {
         return {
             success: true,
@@ -36,23 +37,23 @@ const createPayment = async (req, res) => {
         const { contractId, amount, paymentMethod, description } = req.body;
 
         if (!contractId || !amount || !paymentMethod) {
-            return res.status(400).json({ 
-                message: 'contractId, amount, and paymentMethod are required' 
+            return res.status(400).json({
+                message: 'contractId, amount, and paymentMethod are required'
             });
         }
 
         // Verify contract
         const contract = await Contract.findById(contractId);
         if (!contract) {
-            return res.status(404).json({ 
-                message: 'Contract not found' 
+            return res.status(404).json({
+                message: 'Contract not found'
             });
         }
 
         // Verify payer is the client
         if (contract.client.toString() !== payerId) {
-            return res.status(403).json({ 
-                message: 'Only the client can make payment for this contract' 
+            return res.status(403).json({
+                message: 'Only the client can make payment for this contract'
             });
         }
 
@@ -77,9 +78,9 @@ const createPayment = async (req, res) => {
         });
     } catch (error) {
         console.error('Create payment error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -91,14 +92,14 @@ const processPayment = async (req, res) => {
 
         const payment = await Payment.findById(paymentId);
         if (!payment) {
-            return res.status(404).json({ 
-                message: 'Payment not found' 
+            return res.status(404).json({
+                message: 'Payment not found'
             });
         }
 
         if (payment.status !== 'pending') {
-            return res.status(400).json({ 
-                message: `Payment already ${payment.status}` 
+            return res.status(400).json({
+                message: `Payment already ${payment.status}`
             });
         }
 
@@ -128,9 +129,9 @@ const processPayment = async (req, res) => {
         });
     } catch (error) {
         console.error('Process payment error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -147,24 +148,24 @@ const getPaymentById = async (req, res) => {
             .populate('payee', 'first_name last_name email');
 
         if (!payment) {
-            return res.status(404).json({ 
-                message: 'Payment not found' 
+            return res.status(404).json({
+                message: 'Payment not found'
             });
         }
 
         // Check if user is involved in payment
         if (payment.payer._id.toString() !== userId && payment.payee._id.toString() !== userId) {
-            return res.status(403).json({ 
-                message: 'Access denied' 
+            return res.status(403).json({
+                message: 'Access denied'
             });
         }
 
         res.status(200).json(payment);
     } catch (error) {
         console.error('Get payment error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -196,9 +197,9 @@ const getMyPayments = async (req, res) => {
         });
     } catch (error) {
         console.error('Get my payments error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -211,21 +212,21 @@ const refundPayment = async (req, res) => {
 
         const payment = await Payment.findById(paymentId);
         if (!payment) {
-            return res.status(404).json({ 
-                message: 'Payment not found' 
+            return res.status(404).json({
+                message: 'Payment not found'
             });
         }
 
         // Only payer can request refund
         if (payment.payer.toString() !== userId) {
-            return res.status(403).json({ 
-                message: 'Only the payer can request a refund' 
+            return res.status(403).json({
+                message: 'Only the payer can request a refund'
             });
         }
 
         if (payment.status !== 'completed') {
-            return res.status(400).json({ 
-                message: 'Only completed payments can be refunded' 
+            return res.status(400).json({
+                message: 'Only completed payments can be refunded'
             });
         }
 
@@ -238,9 +239,9 @@ const refundPayment = async (req, res) => {
         });
     } catch (error) {
         console.error('Refund payment error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -265,9 +266,175 @@ const getAllPayments = async (req, res) => {
         });
     } catch (error) {
         console.error('Get all payments error:', error);
-        res.status(500).json({ 
-            message: 'Server error', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
+        });
+    }
+};
+
+// Hold Payment (Escrow) - When accepting Proposal
+const holdPayment = async (req, res) => {
+    try {
+        const { contractId, amount, description } = req.body;
+
+        console.log('🔒 Hold Payment Request:', { contractId, amount });
+
+        if (!contractId || !amount) {
+            return res.status(400).json({
+                message: 'contractId and amount are required'
+            });
+        }
+
+        // Get contract
+        const contract = await Contract.findById(contractId)
+            .populate('client')
+            .populate('freelancer');
+
+        if (!contract) {
+            return res.status(404).json({
+                message: 'Contract not found'
+            });
+        }
+
+        const clientId = contract.client._id;
+        const freelancerId = contract.freelancer._id;
+
+        // Check if client has enough balance
+        const client = await User.findById(clientId);
+        if (!client) {
+            return res.status(404).json({
+                message: 'Client not found'
+            });
+        }
+
+        if (client.balance < amount) {
+            return res.status(400).json({
+                message: `Insufficient balance. You have $${client.balance}, but need $${amount}`
+            });
+        }
+
+        // Check if payment already exists for this contract
+        const existingPayment = await Payment.findOne({
+            contract: contractId,
+            status: { $in: ['held', 'released', 'completed'] }
+        });
+
+        if (existingPayment) {
+            return res.status(400).json({
+                message: 'Payment already exists for this contract'
+            });
+        }
+
+        // Calculate platform fee (10%)
+        const platformFee = amount * 0.10;
+
+        // Deduct amount from client balance (Escrow Hold)
+        await User.updateOne(
+            { _id: clientId },
+            { $inc: { balance: -amount } }
+        );
+
+        console.log(`💰 Deducted $${amount} from client balance`);
+
+        // Create payment record with "held" status
+        const payment = await Payment.create({
+            contract: contractId,
+            payer: clientId,
+            payee: freelancerId,
+            amount,
+            paymentMethod: 'wallet',
+            description: description || 'Escrow payment for contract',
+            platformFee,
+            status: 'held',
+            isEscrow: true,
+            processedAt: new Date()
+        });
+
+        await payment.populate('payer', 'first_name last_name email balance');
+        await payment.populate('payee', 'first_name last_name email');
+
+        console.log('✅ Payment held in escrow:', payment._id);
+
+        res.status(201).json({
+            success: true,
+            message: 'Payment held in escrow successfully',
+            payment,
+            clientNewBalance: payment.payer.balance
+        });
+
+    } catch (error) {
+        console.error('❌ Hold payment error:', error);
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
+        });
+    }
+};
+
+// Release Payment (from Escrow to Freelancer) - When completing contract
+const releasePayment = async (req, res) => {
+    try {
+        const { contractId } = req.body;
+
+        console.log('🔓 Release Payment Request:', { contractId });
+
+        if (!contractId) {
+            return res.status(400).json({
+                message: 'contractId is required'
+            });
+        }
+
+        // Find payment
+        const payment = await Payment.findOne({
+            contract: contractId,
+            status: 'held'
+        }).populate('payer', 'first_name last_name email')
+            .populate('payee', 'first_name last_name email balance');
+
+        if (!payment) {
+            return res.status(404).json({
+                message: 'No held payment found for this contract'
+            });
+        }
+
+        // Calculate amounts
+        const platformFee = payment.platformFee || 0;
+        const freelancerAmount = payment.amount - platformFee;
+
+        console.log(`💵 Releasing payment: Total=$${payment.amount}, Fee=$${platformFee}, Freelancer=$${freelancerAmount}`);
+
+        // Add amount to freelancer balance (minus platform fee)
+        await User.updateOne(
+            { _id: payment.payee._id },
+            { $inc: { balance: freelancerAmount, totalEarnings: freelancerAmount } }
+        );
+
+        // Update payment status
+        payment.status = 'released';
+        payment.completedAt = new Date();
+        payment.releasedAt = new Date();
+        await payment.save();
+
+        // Get updated freelancer
+        const updatedFreelancer = await User.findById(payment.payee._id);
+
+        console.log(`✅ Payment released to freelancer. New balance: $${updatedFreelancer.balance}`);
+
+        res.status(200).json({
+            success: true,
+            message: 'Payment released to freelancer successfully',
+            payment,
+            freelancerNewBalance: updatedFreelancer.balance,
+            amountReleased: freelancerAmount,
+            platformFee
+        });
+
+    } catch (error) {
+        console.error('❌ Release payment error:', error);
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
         });
     }
 };
@@ -278,5 +445,7 @@ module.exports = {
     getPaymentById,
     getMyPayments,
     refundPayment,
-    getAllPayments
+    getAllPayments,
+    holdPayment,
+    releasePayment
 };

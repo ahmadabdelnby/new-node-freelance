@@ -21,7 +21,7 @@ const initializeTransporter = async () => {
         } else {
             // Development: Fallback to Ethereal test account
             const testAccount = await nodemailer.createTestAccount();
-            
+
             transporter = nodemailer.createTransport({
                 host: 'smtp.ethereal.email',
                 port: 587,
@@ -56,12 +56,12 @@ const sendEmail = async ({ to, subject, text, html }) => {
 
         console.log('📧 Email sent successfully to:', to);
         console.log('Message ID:', info.messageId);
-        
+
         // Show preview URL only for Ethereal test emails
         if (info.messageId.includes('ethereal.email')) {
             console.log('Preview URL:', nodemailer.getTestMessageUrl(info));
         }
-        
+
         return {
             success: true,
             messageId: info.messageId,
@@ -187,9 +187,9 @@ const emailTemplates = {
                     <p>Your account has been successfully created as a <strong>${userRole}</strong>.</p>
                     <p>Here's what you can do next:</p>
                     <ul>
-                        ${userRole === 'freelancer' 
-                            ? '<li>Complete your profile and showcase your skills</li><li>Browse available jobs and submit proposals</li><li>Build your portfolio</li>' 
-                            : '<li>Post your first job</li><li>Browse talented freelancers</li><li>Manage your projects</li>'}
+                        ${userRole === 'freelancer'
+                ? '<li>Complete your profile and showcase your skills</li><li>Browse available jobs and submit proposals</li><li>Build your portfolio</li>'
+                : '<li>Post your first job</li><li>Browse talented freelancers</li><li>Manage your projects</li>'}
                     </ul>
                     <div style="text-align: center; margin-top: 30px;">
                         <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/login" style="display: inline-block; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px;">Get Started</a>
@@ -382,6 +382,86 @@ const emailTemplates = {
                         <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/contracts/${contractId}/review" style="display: inline-block; padding: 12px 30px; background: #ffc107; color: #000; text-decoration: none; border-radius: 5px;">Leave Review</a>
                     </div>
                     <p style="margin-top: 30px;">Thank you for using our platform!<br>The Freelance Platform Team</p>
+                </div>
+                <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
+                    <p>© 2025 Freelance Platform. All rights reserved.</p>
+                </div>
+            </div>
+        `
+    }),
+
+    proposalNotSelected: (freelancerName, jobTitle) => ({
+        subject: `Update on Your Proposal for "${jobTitle}"`,
+        html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9f9f9; padding: 30px; border-radius: 10px;">
+                <div style="background: linear-gradient(135deg, #6c757d 0%, #495057 100%); color: white; padding: 30px; text-align: center; border-radius: 10px;">
+                    <h1>Proposal Update</h1>
+                </div>
+                <div style="padding: 30px; background: white; margin-top: 20px; border-radius: 10px;">
+                    <h2>Hi ${freelancerName},</h2>
+                    <p>Thank you for submitting your proposal for "<strong>${jobTitle}</strong>".</p>
+                    <div style="background: #f8d7da; border-left: 4px solid #dc3545; padding: 20px; margin: 20px 0;">
+                        <p style="margin: 0;"><strong>Proposal Status: Not Selected</strong></p>
+                        <p style="margin: 5px 0 0 0;">The client has decided to work with another freelancer for this project.</p>
+                    </div>
+                    <div style="background: #d1ecf1; border-left: 4px solid #17a2b8; padding: 15px; margin: 20px 0;">
+                        <p style="margin: 0;"><strong>💡 Don't Give Up!</strong></p>
+                        <p style="margin: 5px 0 0 0;">There are many other opportunities waiting for you. Keep refining your profile and proposals to increase your chances.</p>
+                    </div>
+                    <p><strong>Tips for Success:</strong></p>
+                    <ul>
+                        <li>Highlight your relevant experience and skills</li>
+                        <li>Write personalized cover letters for each job</li>
+                        <li>Set competitive but fair rates</li>
+                        <li>Respond quickly to job postings</li>
+                    </ul>
+                    <div style="text-align: center; margin-top: 30px;">
+                        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/jobs" style="display: inline-block; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px;">Browse More Jobs</a>
+                    </div>
+                    <p style="margin-top: 30px;">Best regards,<br>The Freelance Platform Team</p>
+                </div>
+                <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
+                    <p>© 2025 Freelance Platform. All rights reserved.</p>
+                </div>
+            </div>
+        `
+    }),
+
+    reviewReceived: (revieweeName, reviewerName, rating, comment, projectTitle, profileLink) => ({
+        subject: `You Received a ${rating}-Star Review!`,
+        html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9f9f9; padding: 30px; border-radius: 10px;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px;">
+                    <h1>⭐ New Review Received!</h1>
+                </div>
+                <div style="padding: 30px; background: white; margin-top: 20px; border-radius: 10px;">
+                    <h2>Hi ${revieweeName},</h2>
+                    <p>Great news! <strong>${reviewerName}</strong> just left you a review for the project "<strong>${projectTitle}</strong>".</p>
+                    
+                    <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 20px; margin: 20px 0;">
+                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                            <span style="font-size: 24px; font-weight: bold;">Rating:</span>
+                            <span style="color: #ffc107; font-size: 28px;">${'⭐'.repeat(rating)}</span>
+                            <span style="font-size: 20px; font-weight: bold;">${rating}/5</span>
+                        </div>
+                    </div>
+
+                    ${comment ? `
+                        <div style="background: #f8f9fa; border-left: 4px solid #667eea; padding: 20px; margin: 20px 0;">
+                            <p style="margin: 0; font-style: italic;">"${comment}"</p>
+                        </div>
+                    ` : ''}
+
+                    <div style="background: #d4edda; border-left: 4px solid #28a745; padding: 15px; margin: 20px 0;">
+                        <p style="margin: 0;"><strong>🎉 Keep Up the Great Work!</strong></p>
+                        <p style="margin: 5px 0 0 0;">Positive reviews help you attract more clients and build your reputation on the platform.</p>
+                    </div>
+
+                    <div style="text-align: center; margin-top: 30px;">
+                        <a href="${profileLink}" style="display: inline-block; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px;">View Your Profile</a>
+                    </div>
+
+                    <p style="margin-top: 30px;">Best regards,<br>The Freelance Platform Team</p>
                 </div>
                 <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
                     <p>© 2025 Freelance Platform. All rights reserved.</p>

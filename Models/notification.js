@@ -5,7 +5,24 @@ const notificationSchema = new Schema({
     user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     type: {
         type: String,
-        enum: ['new_message', 'proposal_accepted', 'proposal_rejected', 'job_invite', 'payment_received', 'payment_sent', 'contract_created', 'contract_completed', 'review_received', 'milestone_completed'],
+        enum: [
+            // Messages
+            'new_message', 'unread_messages',
+            // Jobs
+            'job_posted', 'job_closed', 'job_expired', 'job_updated',
+            // Proposals
+            'new_proposal', 'proposal_accepted', 'proposal_rejected', 'proposal_shortlisted',
+            // Contracts
+            'contract_created', 'contract_completed', 'contract_cancelled', 'contract_disputed',
+            'deliverable_submitted', 'deliverable_accepted', 'deliverable_rejected',
+            // Payments
+            'payment_received', 'payment_sent', 'payment_released',
+            'withdrawal_approved', 'withdrawal_rejected', 'withdrawal_completed', 'balance_low',
+            // Reviews
+            'review_received', 'review_reminder',
+            // Legacy
+            'job_invite', 'milestone_completed'
+        ],
         required: true
     },
     content: {

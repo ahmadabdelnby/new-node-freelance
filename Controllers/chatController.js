@@ -8,18 +8,75 @@ const createOrGetConversation = async (req, res) => {
         const userId = req.user.id;
         const { participantId, jobId, proposalId } = req.body;
 
+        // Validate required fields
         if (!participantId) {
             return res.status(400).json({
                 message: 'participantId is required'
             });
         }
 
-        // Check if conversation exists
+        if (!jobId) {
+            return res.status(400).json({
+                message: 'jobId is required - conversations must be related to a job'
+            });
+        }
+
+        if (!proposalId) {
+            return res.status(400).json({
+                message: 'proposalId is required - conversations must be related to a proposal'
+            });
+        }
+
+        // Verify that the job exists and user is the client
+        const Job = require('../Models/Jobs');
+        const job = await Job.findById(jobId);
+
+        if (!job) {
+            return res.status(404).json({
+                message: 'Job not found'
+            });
+        }
+
+
+        // Handle different possible client fields in job
+        const jobClientId = job.user_id || job.client || job.user;
+        const isClient = jobClientId && jobClientId.toString() === userId;
+
+        if (!isClient) {
+            return res.status(403).json({
+                message: 'Only the job client can initiate conversations'
+            });
+        }
+
+        // Verify that the proposal exists and belongs to the participant
+        const Proposal = require('../Models/proposals');
+        const proposal = await Proposal.findById(proposalId);
+
+        if (!proposal) {
+            return res.status(404).json({
+                message: 'Proposal not found'
+            });
+        }
+
+        if (proposal.job_id.toString() !== jobId) {
+            return res.status(400).json({
+                message: 'Proposal does not belong to this job'
+            });
+        }
+
+        if (proposal.freelancer_id.toString() !== participantId) {
+            return res.status(400).json({
+                message: 'Proposal does not belong to this freelancer'
+            });
+        }
+
+        // Check if conversation exists for this specific job + client + freelancer combination
         let conversation = await Conversation.findOne({
+            job: jobId,
             participants: { $all: [userId, participantId] }
         })
-            .populate('participants', 'first_name last_name profile_picture profile_picture_url email')
-            .populate('job', 'title')
+            .populate('participants', 'first_name last_name profile_picture email')
+            .populate('job', 'title status')
             .populate('proposal')
             .populate('lastMessage');
 
@@ -31,7 +88,23 @@ const createOrGetConversation = async (req, res) => {
                 proposal: proposalId
             });
 
-            await conversation.populate('participants', 'first_name last_name profile_picture profile_picture_url email');
+            await conversation.populate('participants', 'first_name last_name profile_picture email');
+            await conversation.populate('job', 'title status');
+            await conversation.populate('proposal');
+
+            console.log('✅ New conversation created:', {
+                conversationId: conversation._id,
+                jobId,
+                jobTitle: job.title,
+                clientId: userId,
+                freelancerId: participantId
+            });
+        } else {
+            console.log('✅ Existing conversation retrieved:', {
+                conversationId: conversation._id,
+                jobId,
+                jobTitle: job.title
+            });
         }
 
         res.status(200).json({
@@ -132,13 +205,31 @@ const sendMessage = async (req, res) => {
         );
 
         console.log(`🔔 [NOTIFY] Notifying ${otherParticipants.length} other participants:`, otherParticipants);
-        otherParticipants.forEach(participantId => {
+
+        // Create persistent notifications and send real-time alerts
+        const Notification = require('../Models/notification');
+        for (const participantId of otherParticipants) {
+            // Create database notification
+            await Notification.create({
+                user: participantId,
+                type: 'new_message',
+                content: `${message.sender.first_name} sent you a message`,
+                linkUrl: `/messages/${conversationId}`,
+                category: 'message',
+                relatedUser: senderId
+            });
+
+            // Send real-time notification
             console.log(`🔔 [NOTIFY] Sending notification to user:${participantId}`);
             io.to(`user:${participantId}`).emit('new_message_notification', {
                 conversationId,
-                message
+                message,
+                senderId,
+                senderName: message.sender.first_name
             });
-        });
+        }
+
+        console.log(`✅ [NOTIFY] Notifications sent to ${otherParticipants.length} participants`);
 
         res.status(201).json({
             message: message

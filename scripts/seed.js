@@ -289,6 +289,8 @@ async function seed() {
   // Jobs (50+)
   const jobStatuses = ['open', 'in_progress', 'completed', 'cancelled']
   const jobsData = []
+  const now = new Date()
+
   for (let i = 1; i <= 50; i += 1) {
     const specName = randomFrom(specialtyNames)
     const specId = specMap[specName]._id
@@ -296,6 +298,12 @@ async function seed() {
     const chosenSkills = pick(specSkills.map((s) => s._id), Math.min(3, specSkills.length))
     const budgetType = Math.random() > 0.4 ? 'fixed' : 'hourly'
     const status = randomFrom(jobStatuses)
+
+    // 🔥 Add createdAt with different times (spreading jobs over last 30 days)
+    const daysAgo = Math.floor(Math.random() * 30) // 0-30 days ago
+    const hoursAgo = Math.floor(Math.random() * 24) // 0-24 hours
+    const minutesAgo = Math.floor(Math.random() * 60) // 0-60 minutes
+    const createdAt = new Date(now.getTime() - (daysAgo * 24 * 60 * 60 * 1000) - (hoursAgo * 60 * 60 * 1000) - (minutesAgo * 60 * 1000))
 
     jobsData.push({
       client: randomFrom(clients)._id,
@@ -306,7 +314,8 @@ async function seed() {
       budget: { type: budgetType, amount: budgetType === 'fixed' ? 500 + (i * 20) : 20 + (i % 50) },
       status,
       experienceLevel: ['entry', 'intermediate', 'expert'][i % 3],
-      visibility: 'public'
+      visibility: 'public',
+      createdAt // 🔥 Set specific creation time
     })
   }
   const jobs = await Job.insertMany(jobsData)
