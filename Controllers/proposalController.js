@@ -17,7 +17,15 @@ const createProposal = async (req, res) => {
     // Check job existence and status
     const job = await Job.findById(jobId);
     if (!job) return res.status(404).json({ message: 'Job not found.' });
-    if (job.status !== 'open') return res.status(400).json({ message: 'Cannot submit proposal to a closed or in-progress job.' });
+
+    // 🔥 PROFESSIONAL: Only allow proposals on OPEN jobs
+    // Jobs with status 'in_progress', 'completed', or 'cancelled' should not accept new proposals
+    if (job.status !== 'open') {
+      return res.status(400).json({
+        message: `This job is ${job.status} and no longer accepting proposals.`,
+        jobStatus: job.status
+      });
+    }
 
     // Prevent duplicate proposals
     const existingProposal = await Proposal.findOne({ job_id: jobId, freelancer_id: freelancerId });
@@ -51,6 +59,37 @@ const createProposal = async (req, res) => {
 
     // Increment job proposals count
     await Job.findByIdAndUpdate(jobId, { $inc: { proposalsCount: 1 } });
+
+    // 🔥 SEND NOTIFICATION TO CLIENT
+    try {
+      const Notification = require('../Models/notification');
+      const { getIO } = require('../services/socketService');
+
+      await Notification.create({
+        user: job.client,
+        type: 'new_proposal',
+        content: `You received a new proposal for "${job.title}"`,
+        linkUrl: `/job/${job._id}`,
+        category: 'proposal',
+        relatedJob: job._id,
+        relatedProposal: proposal._id
+      });
+
+      // 🔥 Emit real-time notification via Socket.io
+      const io = getIO();
+      if (io) {
+        io.to(`user:${job.client}`).emit('new_proposal', {
+          jobId: job._id,
+          jobTitle: job.title,
+          proposalId: proposal._id,
+          freelancerId: freelancerId
+        });
+        console.log(`✅ Real-time notification sent to client ${job.client}`);
+      }
+    } catch (notifError) {
+      console.error('⚠️ Failed to send notification:', notifError.message);
+      // Don't fail the request if notification fails
+    }
 
     res.status(201).json({
       message: 'Proposal submitted successfully.',
@@ -169,12 +208,27 @@ const getMyProposals = async (req, res) => {
   try {
     const freelancerId = req.user.id;
 
-    // Fetch all proposals by this freelancer
+    // Fetch all proposals by this freelancer with complete job and client details
     const proposals = await Proposal.find({ freelancer_id: freelancerId })
-      .populate('job_id', 'title description budget') // optional: include some job details
+      .populate({
+        path: 'job_id',
+        select: 'title description budget status client',
+        populate: {
+          path: 'client',
+          select: 'first_name last_name email profile_picture profile_picture_url'
+        }
+      })
       .sort({ createdAt: -1 }); // most recent first
 
-    res.status(200).json({ proposals });
+    // Transform to match frontend expectations (job instead of job_id)
+    const transformedProposals = proposals.map(proposal => {
+      const proposalObj = proposal.toObject();
+      proposalObj.job = proposalObj.job_id;
+      delete proposalObj.job_id;
+      return proposalObj;
+    });
+
+    res.status(200).json(transformedProposals);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error. Could not fetch proposals.' });
@@ -214,16 +268,16 @@ const hireProposal = async (req, res) => {
     // 🔥 CHECK CLIENT BALANCE BEFORE CREATING PAYMENT
     const User = require('../Models/User');
     const client = await User.findById(clientId);
-    
+
     if (!client) {
       return res.status(404).json({ message: 'Client not found.' });
     }
 
     const requiredAmount = proposal.bidAmount;
-    
+
     if (client.balance < requiredAmount) {
       console.log('❌ Insufficient balance:', client.balance, 'Required:', requiredAmount);
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: 'Insufficient balance',
         details: {
           currentBalance: client.balance,
@@ -235,10 +289,18 @@ const hireProposal = async (req, res) => {
 
     console.log('✅ Balance check passed:', client.balance, '>=', requiredAmount);
 
-    // Deduct amount from client balance
-    client.balance -= requiredAmount;
-    await client.save();
-    console.log('✅ Amount deducted from client balance. New balance:', client.balance);
+    // Deduct amount from client balance and update totalSpent (use updateOne to bypass password validation)
+    await User.updateOne(
+      { _id: clientId },
+      {
+        $inc: {
+          balance: -requiredAmount,
+          totalSpent: requiredAmount
+        }
+      }
+    );
+    console.log('✅ Amount deducted from client balance. New balance:', client.balance - requiredAmount);
+    console.log('💰 Client totalSpent updated: +$', requiredAmount);
 
     // Set the selected proposal as accepted
     proposal.status = 'accepted';
@@ -251,9 +313,11 @@ const hireProposal = async (req, res) => {
       { $set: { status: 'rejected', respondedAt: new Date() } }
     );
 
-    // Update job status
+    // 🔥 PROFESSIONAL: Update job status to IN_PROGRESS
+    // This prevents new proposals from being submitted and removes job from public listings
     job.status = 'in_progress';
     await job.save();
+    console.log('✅ Job status updated to in_progress - No longer accepting proposals');
 
     // 🔥 AUTO-CREATE CONTRACT
     const Contract = require('../Models/Contract');
@@ -273,11 +337,11 @@ const hireProposal = async (req, res) => {
 
     // 🔥 AUTO-CREATE PAYMENT IN ESCROW
     const Payment = require('../Models/Payment');
-    
+
     // Calculate platform fee (10%)
     const platformFee = proposal.bidAmount * 0.10;
     const netAmount = proposal.bidAmount - platformFee;
-    
+
     const payment = new Payment({
       contract: contract._id,
       payer: job.client,
@@ -286,10 +350,11 @@ const hireProposal = async (req, res) => {
       platformFee: platformFee,
       netAmount: netAmount,
       totalAmount: proposal.bidAmount,
-      paymentMethod: 'escrow',
+      paymentMethod: 'wallet',
       status: 'held', // Money is held in escrow until contract completion
       isEscrow: true,
-      description: `Escrow payment for: ${job.title}`
+      description: `Escrow payment for: ${job.title}`,
+      processedAt: new Date()
     });
     await payment.save();
     console.log('✅ Payment created in escrow:', payment._id);
@@ -297,7 +362,7 @@ const hireProposal = async (req, res) => {
     // 🔥 SEND NOTIFICATIONS
     try {
       const Notification = require('../Models/notification');
-      
+
       // Notify freelancer
       await Notification.create({
         user: proposal.freelancer_id,
@@ -328,11 +393,55 @@ const hireProposal = async (req, res) => {
       // Don't fail the request if notifications fail
     }
 
+    // 🔥 UPDATE OTHER PROPOSALS TO 'NOT_SELECTED'
+    try {
+      const otherProposals = await Proposal.find({
+        job_id: job._id,
+        _id: { $ne: proposal._id },
+        status: { $in: ['submitted', 'viewed'] }
+      }).populate('freelancer_id', 'first_name email');
+
+      if (otherProposals.length > 0) {
+        // Update all other proposals to 'not_selected'
+        await Proposal.updateMany(
+          {
+            job_id: job._id,
+            _id: { $ne: proposal._id },
+            status: { $in: ['submitted', 'viewed'] }
+          },
+          {
+            $set: {
+              status: 'not_selected',
+              respondedAt: new Date()
+            }
+          }
+        );
+
+        console.log(`✅ Updated ${otherProposals.length} other proposals to 'not_selected'`);
+
+        // Send notifications to rejected freelancers
+        const Notification = require('../Models/notification');
+        for (const otherProposal of otherProposals) {
+          await Notification.create({
+            user: otherProposal.freelancer_id._id,
+            type: 'proposal_rejected',
+            title: 'Proposal Not Selected',
+            message: `The client has selected another freelancer for "${job.title}".`,
+            link: `/my-proposals`,
+            relatedJob: job._id,
+            relatedProposal: otherProposal._id
+          });
+        }
+      }
+    } catch (updateError) {
+      console.error('⚠️ Failed to update other proposals:', updateError.message);
+    }
+
     // 🔥 SEND EMAILS
     try {
       const { sendEmail, emailTemplates } = require('../services/emailService');
       const User = require('../Models/User');
-      
+
       // Get freelancer and client info
       const freelancer = await User.findById(proposal.freelancer_id);
       const client = await User.findById(job.client);
@@ -365,6 +474,27 @@ const hireProposal = async (req, res) => {
         });
       }
 
+      // Send rejection emails to other freelancers
+      const otherProposals = await Proposal.find({
+        job_id: job._id,
+        _id: { $ne: proposal._id },
+        status: 'not_selected'
+      }).populate('freelancer_id', 'first_name email');
+
+      for (const otherProposal of otherProposals) {
+        if (otherProposal.freelancer_id && otherProposal.freelancer_id.email) {
+          const template = emailTemplates.proposalNotSelected(
+            otherProposal.freelancer_id.first_name,
+            job.title
+          );
+          sendEmail({
+            to: otherProposal.freelancer_id.email,
+            subject: template.subject,
+            html: template.html
+          });
+        }
+      }
+
       console.log('✅ Emails sent');
     } catch (emailError) {
       console.error('⚠️ Failed to send emails:', emailError.message);
@@ -378,7 +508,7 @@ const hireProposal = async (req, res) => {
       { path: 'freelancer', select: 'first_name last_name email profile_picture' }
     ]);
 
-    res.status(200).json({ 
+    res.status(200).json({
       success: true,
       message: 'Freelancer hired successfully. Contract and escrow payment created.',
       hiredProposal: proposal,
@@ -393,19 +523,24 @@ const hireProposal = async (req, res) => {
     });
   } catch (err) {
     console.error('❌ Error in hireProposal:', err);
-    res.status(500).json({ message: 'Server error. Could not hire freelancer.', error: err.message });
+    console.error('❌ Full error stack:', err.stack);
+    res.status(500).json({
+      message: 'Server error. Could not hire freelancer.',
+      error: err.message,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
   }
 };
 
 //get all proposals for admin dashboard
 const getAllProposals = async (req, res) => {
-    try {
-        const proposals = await Proposal.find()
-        .populate('freelancer_id','email');
-        res.status(200).json(proposals);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+  try {
+    const proposals = await Proposal.find()
+      .populate('freelancer_id', 'email');
+    res.status(200).json(proposals);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 };
 /**********************************************************Delete a Proposal********************************************************/
 //delete a proposal by admin and user (this needs authorizaion for role user too)
@@ -594,23 +729,33 @@ const rejectProposal = async (req, res) => {
     // 🔥 SEND NOTIFICATION
     try {
       const Notification = require('../Models/notification');
-      
+      const { getIO } = require('../services/socketService');
+
       await Notification.create({
         user: proposal.freelancer_id,
         type: 'proposal_rejected',
-        title: 'Proposal Not Selected',
-        message: `Your proposal for "${job.title}" was not selected by the client.`,
-        link: `/proposals/${proposal._id}`,
+        content: `Your proposal for "${job.title}" was not selected by the client`,
+        linkUrl: `/job/${job._id}`,
+        category: 'proposal',
         relatedJob: job._id,
         relatedProposal: proposal._id
       });
 
-      console.log('✅ Notification sent');
+      const io = getIO();
+      if (io) {
+        io.to(`user:${proposal.freelancer_id}`).emit('proposal_rejected', {
+          jobId: job._id,
+          jobTitle: job.title,
+          proposalId: proposal._id
+        });
+      }
+
+      console.log('✅ Proposal rejection notification sent');
     } catch (notifError) {
       console.error('⚠️ Failed to send notification:', notifError.message);
     }
 
-    res.status(200).json({ 
+    res.status(200).json({
       success: true,
       message: 'Proposal rejected successfully.',
       rejectedProposal: proposal
@@ -621,11 +766,11 @@ const rejectProposal = async (req, res) => {
   }
 };
 
-module.exports = { 
-  createProposal, 
+module.exports = {
+  createProposal,
   editProposal,
-  getMyProposals, 
-  hireProposal, 
+  getMyProposals,
+  hireProposal,
   rejectProposal,
   deleteProposal,
   getAllProposals,

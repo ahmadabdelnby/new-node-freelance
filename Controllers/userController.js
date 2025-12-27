@@ -11,7 +11,7 @@ function generateToken(user) {
             role: user.role
         },
         process.env.JWT_SECRET,
-        { expiresIn: '1d' }
+        { expiresIn: '7d' } // 🔥 Token valid for 7 days
     );
 }
 
@@ -64,7 +64,11 @@ const register = async (req, res) => {
             aboutMe,
             category,
             specialty,
-            skills: skills || []
+            skills: skills || [],
+            // Auto-verify email since user provided it during registration
+            isEmailVerified: true,
+            // Auto-verify phone if provided
+            isPhoneVerified: phone_number ? true : false
         });
 
         await newUser.save();
@@ -383,6 +387,11 @@ const updateProfile = async (req, res) => {
         if (updatedData.skills !== undefined) {
             // Skills should be sent as array of ObjectIds directly
             // No need to wrap them since User model expects: skills: [ObjectId]
+        }
+
+        // Auto-verify phone if user adds/updates phone_number
+        if (updatedData.phone_number) {
+            updatedData.isPhoneVerified = true;
         }
 
         let updatedUser;
@@ -857,6 +866,34 @@ const getProfileCompletion = async (req, res) => {
     }
 };
 
+/**
+ * Get current user's balance
+ * Used to refresh balance across frontend
+ */
+const getCurrentBalance = async (req, res) => {
+    try {
+        const userId = req.user.id || req.user._id;
+
+        const userDoc = await user.findById(userId).select('balance');
+
+        if (!userDoc) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        res.status(200).json({
+            success: true,
+            balance: userDoc.balance || 0
+        });
+    } catch (error) {
+        console.error('Get current balance error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error',
+            error: error.message
+        });
+    }
+};
+
 module.exports = {
     register,
     login,
@@ -876,5 +913,6 @@ module.exports = {
     forgotPassword,
     verifyResetToken,
     resetPassword,
-    getProfileCompletion
+    getProfileCompletion,
+    getCurrentBalance
 }

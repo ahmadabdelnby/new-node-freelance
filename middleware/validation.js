@@ -115,23 +115,48 @@ const validateJobCreation = [
         .withMessage('Specialty is required')
         .isMongoId()
         .withMessage('Invalid specialty ID'),
+    // 🔥 Skills can be array (JSON) or string (FormData) - validate after parsing
     body('skills')
         .optional()
-        .isArray()
+        .custom((value) => {
+            // If string (FormData), it will be parsed in controller
+            if (typeof value === 'string') {
+                try {
+                    const parsed = JSON.parse(value);
+                    return Array.isArray(parsed);
+                } catch (e) {
+                    return false;
+                }
+            }
+            // If already array (JSON), validate directly
+            return Array.isArray(value);
+        })
         .withMessage('Skills must be an array'),
-    body('skills.*')
-        .optional()
-        .isMongoId()
-        .withMessage('Invalid skill ID'),
-    body('budget.type')
-        .isIn(['hourly', 'fixed'])
-        .withMessage('Budget type must be either hourly or fixed'),
-    body('budget.amount')
-        .isFloat({ min: 0 })
-        .withMessage('Budget amount must be a positive number'),
+    // 🔥 Budget can be object (JSON) or string (FormData)
+    body('budget')
+        .custom((value) => {
+            let budgetObj = value;
+            // If string (FormData), parse it
+            if (typeof value === 'string') {
+                try {
+                    budgetObj = JSON.parse(value);
+                } catch (e) {
+                    return false;
+                }
+            }
+            // Validate structure
+            return budgetObj &&
+                ['hourly', 'fixed'].includes(budgetObj.type) &&
+                typeof budgetObj.amount === 'number' &&
+                budgetObj.amount >= 0;
+        })
+        .withMessage('Budget must have valid type (hourly/fixed) and positive amount'),
     body('duration')
         .optional()
-        .isInt({ min: 1 })
+        .custom((value) => {
+            const num = typeof value === 'string' ? parseInt(value) : value;
+            return Number.isInteger(num) && num >= 1;
+        })
         .withMessage('Duration must be at least 1 day'),
     validate
 ];

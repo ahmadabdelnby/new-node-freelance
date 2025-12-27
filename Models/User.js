@@ -130,6 +130,27 @@ const userSchema = new mongoose.Schema({
         default: 0,
         min: 0
     },
+    completedJobsAsClient: {
+        type: Number,
+        default: 0,
+        min: 0
+    },
+    totalSpent: {
+        type: Number,
+        default: 0,
+        min: 0
+    },
+    averageRating: {
+        type: Number,
+        default: 0,
+        min: 0,
+        max: 5
+    },
+    totalReviews: {
+        type: Number,
+        default: 0,
+        min: 0
+    },
     // Verification fields
     isEmailVerified: {
         type: Boolean,

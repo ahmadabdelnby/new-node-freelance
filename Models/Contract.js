@@ -5,32 +5,32 @@ const Schema = mongoose.Schema;
 
 const contractSchema = new Schema({
     // Reference to the job
-    job: { 
-        type: Schema.Types.ObjectId, 
-        ref: 'Job', 
-        required: true 
+    job: {
+        type: Schema.Types.ObjectId,
+        ref: 'Job',
+        required: true
     },
     // Reference to the client
-    client: { 
-        type: Schema.Types.ObjectId, 
-        ref: 'User', 
-        required: true 
+    client: {
+        type: Schema.Types.ObjectId,
+        ref: 'User',
+        required: true
     },
     // Reference to the freelancer
-    freelancer: { 
-        type: Schema.Types.ObjectId, 
-        ref: 'User', 
-        required: true 
+    freelancer: {
+        type: Schema.Types.ObjectId,
+        ref: 'User',
+        required: true
     },
     // Reference to the winning proposal
-    proposal: { 
-        type: Schema.Types.ObjectId, 
-        ref: 'Proposal', 
-        required: true 
+    proposal: {
+        type: Schema.Types.ObjectId,
+        ref: 'Proposal',
+        required: true
     },
     // The final agreed-upon price (if fixed) or hourly rate (if hourly)
-    agreedAmount: { 
-        type: Number, 
+    agreedAmount: {
+        type: Number,
         required: true,
         min: [0, 'Amount must be greater than or equal to 0']
     },
@@ -40,10 +40,10 @@ const contractSchema = new Schema({
         enum: ['hourly', 'fixed'],
         required: true
     },
-    status: { 
-        type: String, 
-        enum: ['active', 'paused', 'completed', 'terminated'], 
-        default: 'active' 
+    status: {
+        type: String,
+        enum: ['active', 'paused', 'completed', 'terminated'],
+        default: 'active'
     },
     startDate: {
         type: Date,
@@ -115,10 +115,22 @@ const contractSchema = new Schema({
             type: String,
             trim: true
         }
-    }]
-}, { 
+    }],
+    // 🔥 Simple time-based progress tracking
+    halfwayNotificationSent: {
+        type: Boolean,
+        default: false
+    },
+    deadlineWarningsSent: {
+        type: [String], // ['50%', '75%', '90%']
+        default: []
+    },
+    deadline: {
+        type: Date
+    }
+}, {
     // Automatically adds createdAt and updatedAt fields
-    timestamps: true 
+    timestamps: true
 });
 
 // Indexes for better query performance

@@ -6,7 +6,9 @@ const {
     getPaymentById,
     getMyPayments,
     refundPayment,
-    getAllPayments
+    getAllPayments,
+    holdPayment,
+    releasePayment
 } = require('../Controllers/paymentController');
 const authenticate = require('../middleware/authenticationMiddle');
 const authorize = require('../middleware/authorizationMiddle');
@@ -139,5 +141,55 @@ router.get('/:paymentId', authenticate, getPaymentById);
  *         description: Payment refunded successfully
  */
 router.post('/:paymentId/refund', authenticate, refundPayment);
+
+/**
+ * @swagger
+ * /Freelancing/api/v1/payments/escrow/hold:
+ *   post:
+ *     summary: Hold payment in escrow (when accepting proposal)
+ *     tags: [Payments]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               contractId:
+ *                 type: string
+ *               amount:
+ *                 type: number
+ *               description:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Payment held in escrow successfully
+ */
+router.post('/escrow/hold', authenticate, holdPayment);
+
+/**
+ * @swagger
+ * /Freelancing/api/v1/payments/escrow/release:
+ *   post:
+ *     summary: Release payment from escrow to freelancer (when completing contract)
+ *     tags: [Payments]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               contractId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Payment released successfully
+ */
+router.post('/escrow/release', authenticate, releasePayment);
 
 module.exports = router;

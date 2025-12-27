@@ -1,9 +1,69 @@
 const Review = require("../Models/review.model");
+const Notification = require("../Models/notification");
+const User = require("../Models/User");
+const { sendEmail, emailTemplates } = require("../services/emailService");
 
 // Create a new review
 const createReview = async (req, res) => {
   try {
     const { contract, reviewer, reviewee, rating, comment } = req.body;
+
+    console.log('📝 Creating review with data:', { contract, reviewer, reviewee, rating, comment: comment?.substring(0, 50) });
+
+    // Validate required fields
+    if (!contract || !reviewer || !reviewee || !rating || !comment) {
+      const missing = [];
+      if (!contract) missing.push('contract');
+      if (!reviewer) missing.push('reviewer');
+      if (!reviewee) missing.push('reviewee');
+      if (!rating) missing.push('rating');
+      if (!comment) missing.push('comment');
+
+      return res.status(400).json({
+        message: `Missing required fields: ${missing.join(', ')}`,
+        missingFields: missing
+      });
+    }
+
+    // Verify reviewer is authenticated user
+    if (String(reviewer) !== String(req.user?._id || req.user?.id)) {
+      return res.status(403).json({
+        message: "You can only create reviews as yourself"
+      });
+    }
+
+    // Fetch contract to validate
+    const Contract = require("../Models/Contract");
+    const contractDoc = await Contract.findById(contract).populate('client freelancer');
+
+    if (!contractDoc) {
+      return res.status(404).json({ message: "Contract not found" });
+    }
+
+    // Verify contract is completed
+    if (contractDoc.status !== 'completed') {
+      return res.status(400).json({
+        message: "You can only review completed contracts"
+      });
+    }
+
+    // Verify reviewer is part of the contract
+    const isClient = String(contractDoc.client._id) === String(reviewer);
+    const isFreelancer = String(contractDoc.freelancer._id) === String(reviewer);
+
+    if (!isClient && !isFreelancer) {
+      return res.status(403).json({
+        message: "You are not authorized to review this contract"
+      });
+    }
+
+    // Verify reviewee is the other party
+    const expectedReviewee = isClient ? contractDoc.freelancer._id : contractDoc.client._id;
+    if (String(reviewee) !== String(expectedReviewee)) {
+      return res.status(400).json({
+        message: "Invalid reviewee for this contract"
+      });
+    }
 
     // Check if review already exists for this contract and reviewer
     const existingReview = await Review.findOne({ contract, reviewer });
@@ -22,6 +82,54 @@ const createReview = async (req, res) => {
     });
 
     await newReview.save();
+
+    // Update reviewee's average rating and total reviews
+    const allReviewsForUser = await Review.find({ reviewee });
+    const totalReviewsCount = allReviewsForUser.length;
+    const averageRating = allReviewsForUser.reduce((sum, review) => sum + review.rating, 0) / totalReviewsCount;
+
+    await User.updateOne(
+      { _id: reviewee },
+      {
+        averageRating: parseFloat(averageRating.toFixed(2)),
+        totalReviews: totalReviewsCount
+      }
+    );
+
+    console.log(`⭐ Updated reviewee stats: ${averageRating.toFixed(2)} stars (${totalReviewsCount} reviews)`);
+
+    // Populate review data for notification
+    await newReview.populate([
+      { path: 'reviewer', select: 'first_name last_name email' },
+      { path: 'reviewee', select: 'first_name last_name email' },
+      { path: 'contract', select: 'title' }
+    ]);
+
+    // Create notification for reviewee
+    await Notification.create({
+      user: reviewee,
+      type: 'review_received',
+      title: 'New Review Received',
+      message: `${newReview.reviewer.first_name} ${newReview.reviewer.last_name} left you a ${rating}-star review`,
+      link: `/freelancer/${reviewee}`
+    });
+
+    // Send email notification
+    const template = emailTemplates.reviewReceived(
+      `${newReview.reviewee.first_name} ${newReview.reviewee.last_name}`,
+      `${newReview.reviewer.first_name} ${newReview.reviewer.last_name}`,
+      rating,
+      comment,
+      newReview.contract?.title || 'Your Project',
+      `${process.env.CLIENT_URL || 'http://localhost:5173'}/freelancer/${reviewee}`
+    );
+
+    await sendEmail({
+      to: newReview.reviewee.email,
+      subject: template.subject,
+      html: template.html
+    });
+
     res
       .status(201)
       .json({ message: "Review created successfully", review: newReview });
