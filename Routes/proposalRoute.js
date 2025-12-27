@@ -4,6 +4,7 @@ const {
   createProposal,
   editProposal, 
   getMyProposals, 
+  getAllProposals,
   hireProposal,
   rejectProposal,
   deleteProposal,
@@ -15,6 +16,9 @@ const authenticate = require('../middleware/authenticationMiddle');
 const { uploadAttachments } = require('../middleware/uploadMiddleware');
 const { validateProposalCreation, validateMongoId } = require('../middleware/validation');
 const { proposalLimiter } = require('../middleware/rateLimiter');
+
+// GET /api/proposals - get all proposals (admin)
+router.get('/', authenticate, getAllProposals);
 
 // POST /api/proposals - create a new proposal (with file attachments)
 router.post('/', authenticate, proposalLimiter, uploadAttachments, validateProposalCreation, createProposal);

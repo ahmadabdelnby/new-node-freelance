@@ -55,7 +55,7 @@ const uploadAttachments = async (req, res) => {
     try {
         // Handle both single file and multiple files
         const files = req.files || (req.file ? [req.file] : []);
-        
+
         if (files.length === 0) {
             return res.status(400).json({
                 message: 'No files uploaded'

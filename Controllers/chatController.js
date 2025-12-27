@@ -51,6 +51,11 @@ const createOrGetConversation = async (req, res) => {
 const getMyConversations = async (req, res) => {
     try {
         const userId = req.user.id;
+        console.log('🔍 Getting conversations for userId:', userId);
+
+        // First, let's check if there are ANY conversations in the database
+        const totalConversations = await Conversation.countDocuments();
+        console.log('📊 Total conversations in database:', totalConversations);
 
         const conversations = await Conversation.find({
             participants: userId
@@ -60,12 +65,40 @@ const getMyConversations = async (req, res) => {
             .populate('lastMessage')
             .sort({ lastMessageAt: -1 });
 
+        console.log('✅ Found conversations for this user:', conversations.length);
+
         res.status(200).json({
             count: conversations.length,
             conversations
         });
     } catch (error) {
         console.error('Get conversations error:', error);
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
+        });
+    }
+};
+
+// Get ALL conversations (Admin only)
+const getAllConversations = async (req, res) => {
+    try {
+        console.log('🔍 [ADMIN] Getting ALL conversations from database');
+
+        const conversations = await Conversation.find({})
+            .populate('participants', 'first_name last_name profile_picture profile_picture_url email')
+            .populate('job', 'title')
+            .populate('lastMessage')
+            .sort({ lastMessageAt: -1 });
+
+        console.log('✅ [ADMIN] Found total conversations:', conversations.length);
+
+        res.status(200).json({
+            count: conversations.length,
+            conversations
+        });
+    } catch (error) {
+        console.error('Get all conversations error:', error);
         res.status(500).json({
             message: 'Server error',
             error: error.message
@@ -479,6 +512,7 @@ const archiveConversation = async (req, res) => {
 module.exports = {
     createOrGetConversation,
     getMyConversations,
+    getAllConversations,
     sendMessage,
     getConversationMessages,
     markAsRead,
