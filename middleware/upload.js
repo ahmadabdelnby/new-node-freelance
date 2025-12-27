@@ -55,17 +55,17 @@ const cvStorage = multer.diskStorage({
 
 // Configure storage for job attachments
 const attachmentStorage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        const attachmentDir = path.join(__dirname, '../Public/uploads/attachments');
-        if (!fs.existsSync(attachmentDir)) {
-            fs.mkdirSync(attachmentDir, { recursive: true });
-        }
-        cb(null, attachmentDir);
-    },
-    filename: function (req, file, cb) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, 'attachment-' + uniqueSuffix + path.extname(file.originalname));
+  destination: function (req, file, cb) {
+    const attachmentDir = path.join(__dirname, '../Public/uploads/attachments');
+    if (!fs.existsSync(attachmentDir)) {
+      fs.mkdirSync(attachmentDir, { recursive: true });
     }
+    cb(null, attachmentDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'attachment-' + uniqueSuffix + path.extname(file.originalname));
+  }
 });
 
 // File filter to accept only images
@@ -100,22 +100,22 @@ const pdfFilter = (req, file, cb) => {
 
 // File filter for job attachments (documents and images)
 const attachmentFilter = (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|pdf|doc|docx|zip/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const allowedMimeTypes = [
-        'image/jpeg', 'image/jpg', 'image/png',
-        'application/pdf',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/zip', 'application/x-zip-compressed'
-    ];
-    const mimetype = allowedMimeTypes.includes(file.mimetype);
+  const allowedTypes = /jpeg|jpg|png|pdf|doc|docx|zip/;
+  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+  const allowedMimeTypes = [
+    'image/jpeg', 'image/jpg', 'image/png',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/zip', 'application/x-zip-compressed'
+  ];
+  const mimetype = allowedMimeTypes.includes(file.mimetype);
 
-    if (mimetype && extname) {
-        return cb(null, true);
-    } else {
-        cb(new Error('Only PDF, DOC, DOCX, JPG, PNG, and ZIP files are allowed'));
-    }
+  if (mimetype && extname) {
+    return cb(null, true);
+  } else {
+    cb(new Error('Only PDF, DOC, DOCX, JPG, PNG, and ZIP files are allowed'));
+  }
 };
 
 // Multer instances
@@ -144,11 +144,11 @@ const uploadCV = multer({
 });
 
 const uploadJobAttachments = multer({
-    storage: attachmentStorage,
-    fileFilter: attachmentFilter,
-    limits: {
-        fileSize: 10 * 1024 * 1024 // 10MB max per file
-    }
+  storage: attachmentStorage,
+  fileFilter: attachmentFilter,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB max per file
+  }
 });
 
 module.exports = {

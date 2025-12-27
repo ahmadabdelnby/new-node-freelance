@@ -1,10 +1,13 @@
 //imports
+const dotenv = require("dotenv");
+//dotenv config - must be at top before any other imports
+dotenv.config();
+
 const express = require("express");
 const app = express();
 const http = require("http");
 const server = http.createServer(app);
 const mongoose = require("mongoose");
-const dotenv = require("dotenv");
 const cors = require("cors");
 const helmet = require("helmet");
 const mongoSanitize = require("express-mongo-sanitize");
@@ -33,9 +36,6 @@ const chatRoute = require('./Routes/chatRoute');
 const paymentRoute = require('./Routes/paymentRoute');
 const statisticsRoute = require('./Routes/statisticsRoute');
 const fundsRoute = require('./Routes/fundsRoute');
-
-//dotenv config - must be at top
-dotenv.config();
 
 //middleware /must be added at the top
 app.use(express.json());
