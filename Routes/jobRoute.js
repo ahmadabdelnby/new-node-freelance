@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const { 
-    createJob, 
+    createJob,
+    updateJobEmbeddings, 
+    recommendFreelancers,
     getAllJobs, 
     searchJobs, 
     getJobById, 
@@ -53,6 +55,13 @@ const { validateJobCreation, validateMongoId } = require('../middleware/validati
  *         description: Job created successfully
  */
 router.post('/', authentic, validateJobCreation, createJob);
+
+
+//route to update already existing jobs
+router.post('/update-embeddings', authentic, validateJobCreation, updateJobEmbeddings);
+
+//route get recommended freelancers based on similarity and freelancers rating
+router.get('/recommend/:jobId', authentic, recommendFreelancers);
 
 /**
  * @swagger

@@ -1,4 +1,5 @@
 //imports
+require('dotenv').config();
 const express = require("express");
 const app = express();
 const http = require("http");
@@ -33,6 +34,8 @@ const chatRoute = require('./Routes/chatRoute');
 const paymentRoute = require('./Routes/paymentRoute');
 const statisticsRoute = require('./Routes/statisticsRoute');
 const fundsRoute = require('./Routes/fundsRoute');
+const convRoute = require('./Routes/ConversationRoute')
+const messageRoute = require('./Routes/MessageRoute')
 
 //dotenv config - must be at top
 dotenv.config();
@@ -166,6 +169,8 @@ app.use('/Freelancing/api/v1/chat', chatRoute);
 app.use('/Freelancing/api/v1/payments', paymentRoute);
 app.use('/Freelancing/api/v1/statistics', statisticsRoute);
 app.use('/Freelancing/api/v1/funds', fundsRoute);
+app.use('/Freelancing/api/v1/messages', messageRoute);
+app.use('/Freelancing/api/v1/getconversations', convRoute);
 
 //mongoose connection
 mongoose
