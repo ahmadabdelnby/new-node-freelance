@@ -3,7 +3,8 @@ const router = express.Router();
 const {
     getPlatformStatistics,
     getGrowthData,
-    getUserDashboard
+    getUserDashboard,
+    getChartData
 } = require('../Controllers/statisticsController');
 const authenticate = require('../middleware/authenticationMiddle');
 const authorize = require('../middleware/authorizationMiddle');
@@ -41,6 +42,20 @@ router.get('/platform', authenticate, authorize('admin'), getPlatformStatistics)
  *         description: Growth data retrieved successfully
  */
 router.get('/growth', authenticate, authorize('admin'), getGrowthData);
+
+/**
+ * @swagger
+ * /Freelancing/api/v1/statistics/charts:
+ *   get:
+ *     summary: Get formatted chart data for dashboard
+ *     tags: [Statistics]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Chart data retrieved successfully
+ */
+router.get('/charts', authenticate, authorize('admin'), getChartData);
 
 /**
  * @swagger

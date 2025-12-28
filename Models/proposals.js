@@ -43,7 +43,7 @@ const proposalSchema = new mongoose.Schema({
   ],
   status: {
     type: String,
-    enum: ['submitted', 'viewed', 'accepted', 'rejected', 'withdrawn'],
+    enum: ['submitted', 'viewed', 'accepted', 'rejected', 'withdrawn', 'not_selected'],
     default: 'submitted',
   },
   withdrawReason: {
@@ -62,7 +62,7 @@ const proposalSchema = new mongoose.Schema({
   respondedAt: {
     type: Date
   }
-},  { timestamps: true });
+}, { timestamps: true });
 
 // Indexes for better performance
 proposalSchema.index({ job_id: 1 });

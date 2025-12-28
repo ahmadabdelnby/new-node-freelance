@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
-const user = require('../Models/User');
+const User = require('../Models/User');
 
-function authenticate(req, res, next) {
+async function authenticate(req, res, next) {
     const authHeader = req.headers["authorization"];
 
     if (!authHeader) {
@@ -17,6 +17,18 @@ function authenticate(req, res, next) {
 
     try {
         const payload = jwt.verify(token, process.env.JWT_SECRET);
+
+        // 🔥 CRITICAL: Verify user still exists in database
+        const userExists = await User.findById(payload.id).select('_id email role');
+
+        if (!userExists) {
+            console.log(`⚠️ Deleted user attempted access: ${payload.id}`);
+            return res.status(401).json({
+                message: "User account no longer exists. Please login again.",
+                accountDeleted: true // Signal to frontend to clear tokens
+            });
+        }
+
         req.user = payload;
         next();
     } catch (err) {

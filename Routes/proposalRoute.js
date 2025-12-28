@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const { 
+const {
   createProposal,
   editProposal, 
   getMyProposals, 
+  getAllProposals,
   hireProposal,
   rejectProposal,
   deleteProposal,
@@ -12,9 +13,13 @@ const {
   markProposalAsViewed
 } = require('../Controllers/proposalController');
 const authenticate = require('../middleware/authenticationMiddle');
+const optionalAuth = require('../middleware/optionalAuth');
 const { uploadAttachments } = require('../middleware/uploadMiddleware');
 const { validateProposalCreation, validateMongoId } = require('../middleware/validation');
 const { proposalLimiter } = require('../middleware/rateLimiter');
+
+// GET /api/proposals - get all proposals (admin)
+router.get('/', authenticate, getAllProposals);
 
 // POST /api/proposals - create a new proposal (with file attachments)
 router.post('/', authenticate, proposalLimiter, uploadAttachments, validateProposalCreation, createProposal);
@@ -25,8 +30,8 @@ router.patch('/:id', authenticate, validateMongoId, editProposal);
 // GET /api/proposals/mine - get logged-in freelancer's proposals
 router.get('/mine', authenticate, getMyProposals);
 
-// GET /api/proposals/job/:jobId - get all proposals for a job (client only)
-router.get('/job/:jobId', authenticate, getProposalsByJob);
+// GET /api/proposals/job/:jobId - get all proposals for a job (allow viewing count even when not logged in)
+router.get('/job/:jobId', optionalAuth, getProposalsByJob);
 
 // PATCH /api/proposals/:id/hire - hire a freelancer for a job (client only)
 router.patch('/:id/hire', authenticate, hireProposal);

@@ -69,56 +69,58 @@
 // messageSchema.index({ sender: 1 });
 // messageSchema.index({ isRead: 1 });
 
-// const conversationSchema = new Schema({
-//     participants: [{
-//         type: Schema.Types.ObjectId,
-//         ref: 'User',
-//         required: true
-//     }],
-//     job: {
-//         type: Schema.Types.ObjectId,
-//         ref: 'Job'
-//     },
-//     proposal: {
-//         type: Schema.Types.ObjectId,
-//         ref: 'Proposal'
-//     },
-//     lastMessage: {
-//         type: Schema.Types.ObjectId,
-//         ref: 'Message'
-//     },
-//     lastMessageAt: {
-//         type: Date,
-//         default: Date.now
-//     },
-//     // Track unread count per participant
-//     unreadCount: [{
-//         user: {
-//             type: Schema.Types.ObjectId,
-//             ref: 'User'
-//         },
-//         count: {
-//             type: Number,
-//             default: 0
-//         }
-//     }],
-//     // Archive conversation
-//     isArchived: {
-//         type: Boolean,
-//         default: false
-//     },
-//     archivedBy: [{
-//         type: Schema.Types.ObjectId,
-//         ref: 'User'
-//     }],
-//     // Mute notifications
-//     mutedBy: [{
-//         type: Schema.Types.ObjectId,
-//         ref: 'User'
-//     }]
-// }, {
-//     timestamps: true
-// });
+const conversationSchema = new Schema({
+    participants: [{
+        type: Schema.Types.ObjectId,
+        ref: 'User',
+        required: true
+    }],
+    job: {
+        type: Schema.Types.ObjectId,
+        ref: 'Job',
+        required: true // المحادثة يجب أن تكون مرتبطة بجوب
+    },
+    proposal: {
+        type: Schema.Types.ObjectId,
+        ref: 'Proposal',
+        required: true // المحادثة يجب أن تكون مرتبطة بـ proposal
+    },
+    lastMessage: {
+        type: Schema.Types.ObjectId,
+        ref: 'Message'
+    },
+    lastMessageAt: {
+        type: Date,
+        default: Date.now
+    },
+    // Track unread count per participant
+    unreadCount: [{
+        user: {
+            type: Schema.Types.ObjectId,
+            ref: 'User'
+        },
+        count: {
+            type: Number,
+            default: 0
+        }
+    }],
+    // Archive conversation
+    isArchived: {
+        type: Boolean,
+        default: false
+    },
+    archivedBy: [{
+        type: Schema.Types.ObjectId,
+        ref: 'User'
+    }],
+    // Mute notifications
+    mutedBy: [{
+        type: Schema.Types.ObjectId,
+        ref: 'User'
+    }]
+}, {
+    timestamps: true
+});
 
 // // Indexes for better performance
 // conversationSchema.index({ participants: 1 });

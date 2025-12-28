@@ -3,6 +3,7 @@ const router = express.Router();
 const {
     createOrGetConversation,
     getMyConversations,
+    getAllConversations,
     sendMessage,
     getConversationMessages,
     markAsRead,
@@ -54,6 +55,20 @@ router.post('/conversation', authenticate, createOrGetConversation);
  *         description: Conversations retrieved successfully
  */
 router.get('/conversations', authenticate, getMyConversations);
+
+/**
+ * @swagger
+ * /Freelancing/api/v1/chat/conversations/all:
+ *   get:
+ *     summary: Get ALL conversations (Admin only)
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: All conversations retrieved successfully
+ */
+router.get('/conversations/all', authenticate, getAllConversations);
 
 /**
  * @swagger

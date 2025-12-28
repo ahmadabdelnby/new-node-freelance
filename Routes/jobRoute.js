@@ -1,5 +1,11 @@
 const express = require('express');
 const router = express.Router();
+// const {
+//     createJob,
+//     getAllJobs,
+//     searchJobs,
+//     getJobById,
+//     updateJobById,
 const { 
     createJob,
     updateJobEmbeddings, 
@@ -12,10 +18,14 @@ const {
     incrementJobViews,
     getJobsByClient,
     getFeaturedJobs,
-    closeJob
+    closeJob,
+    closeJobById,
+    getJobContract
 } = require('../Controllers/jobsController');
 const authentic = require('../middleware/authenticationMiddle');
+const optionalAuth = require('../middleware/optionalAuth');
 const { validateJobCreation, validateMongoId } = require('../middleware/validation');
+const { uploadJobAttachments } = require('../middleware/upload');
 
 /**
  * @swagger
@@ -54,6 +64,7 @@ const { validateJobCreation, validateMongoId } = require('../middleware/validati
  *       201:
  *         description: Job created successfully
  */
+router.post('/', authentic, uploadJobAttachments.array('attachments', 5), validateJobCreation, createJob);
 router.post('/', authentic, validateJobCreation, createJob);
 
 
@@ -129,7 +140,7 @@ router.get('/search', searchJobs);
  *       200:
  *         description: Job retrieved successfully
  */
-router.get('/:id', getJobById);
+router.get('/:id', optionalAuth, getJobById);
 
 /**
  * @swagger
@@ -177,7 +188,7 @@ router.get('/:id', getJobById);
  *       200:
  *         description: Job updated successfully
  */
-router.put('/:id', authentic, updateJobById);
+router.put('/:id', authentic, uploadJobAttachments.array('attachments', 5), updateJobById);
 
 /**
  * @swagger
@@ -196,6 +207,26 @@ router.put('/:id', authentic, updateJobById);
  *         description: Job deleted successfully
  */
 router.delete('/:id', authentic, deleteJobById);
+
+/**
+ * @swagger
+ * /Freelancing/api/v1/jobs/{id}/close:
+ *   patch:
+ *     summary: Close a job (alternative to delete for jobs with proposals)
+ *     tags: [Jobs]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Job closed successfully
+ */
+router.patch('/:id/close', authentic, closeJobById);
 
 /**
  * @swagger
@@ -231,7 +262,7 @@ router.patch('/:id/view', incrementJobViews);
  *       200:
  *         description: Jobs fetched successfully
  */
-router.get('/client/:clientId', authentic, getJobsByClient);
+router.get('/client/:clientId', optionalAuth, getJobsByClient);
 
 /**
  * @swagger
@@ -268,5 +299,30 @@ router.get('/featured', getFeaturedJobs);
  *         description: Job closed successfully
  */
 router.patch('/:id/close', authentic, closeJob);
+
+/**
+ * @swagger
+ * /Freelancing/api/v1/jobs/{jobId}/contract:
+ *   get:
+ *     summary: Get contract details for a job (in_progress or completed only)
+ *     tags: [Jobs]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: jobId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Job ID
+ *     responses:
+ *       200:
+ *         description: Contract details retrieved successfully
+ *       403:
+ *         description: Not authorized to view this contract
+ *       404:
+ *         description: Job or contract not found
+ */
+router.get('/:jobId/contract', authentic, getJobContract);
 
 module.exports = router;

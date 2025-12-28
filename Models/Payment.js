@@ -5,7 +5,7 @@ const paymentSchema = new Schema({
     contract: {
         type: Schema.Types.ObjectId,
         ref: 'Contract',
-        required: true
+        required: false // Not required for withdrawals
     },
     payer: {
         type: Schema.Types.ObjectId,
@@ -35,6 +35,11 @@ const paymentSchema = new Schema({
         type: String,
         enum: ['pending', 'processing', 'completed', 'failed', 'refunded', 'cancelled', 'held', 'released'],
         default: 'pending'
+    },
+    type: {
+        type: String,
+        enum: ['payment', 'withdrawal', 'refund', 'escrow'],
+        default: 'payment'
     },
     transactionId: {
         type: String,
@@ -81,11 +86,18 @@ const paymentSchema = new Schema({
         type: Boolean,
         default: true
     },
+    // For PayPal withdrawals
+    paypalBatchId: {
+        type: String
+    },
+    paypalEmail: {
+        type: String
+    },
     paymentGatewayResponse: {
         type: Schema.Types.Mixed
     }
-}, { 
-    timestamps: true 
+}, {
+    timestamps: true
 });
 
 // Indexes for better query performance
@@ -96,7 +108,7 @@ paymentSchema.index({ status: 1 });
 paymentSchema.index({ createdAt: -1 });
 
 // Calculate amounts before saving
-paymentSchema.pre('save', function(next) {
+paymentSchema.pre('save', function (next) {
     if (this.isModified('amount') || this.isModified('platformFee')) {
         this.totalAmount = this.amount + (this.platformFee || 0);
         this.netAmount = this.amount - (this.platformFee || 0);

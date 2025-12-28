@@ -328,8 +328,119 @@ const getUserDashboard = async (req, res) => {
     }
 };
 
+// Get formatted chart data for dashboard
+const getChartData = async (req, res) => {
+    try {
+        const currentDate = new Date();
+        
+        // Last 6 months data
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const last6Months = [];
+        
+        for (let i = 5; i >= 0; i--) {
+            const date = new Date(currentDate);
+            date.setMonth(date.getMonth() - i);
+            last6Months.push({
+                month: monthNames[date.getMonth()],
+                year: date.getFullYear(),
+                monthNum: date.getMonth() + 1
+            });
+        }
+
+        // Users growth - last 6 months (cumulative)
+        const usersGrowthData = await Promise.all(
+            last6Months.map(async ({ year, monthNum }) => {
+                const endDate = new Date(year, monthNum, 0, 23, 59, 59);
+                
+                const count = await User.countDocuments({
+                    createdAt: { $lte: endDate }
+                });
+                
+                return count;
+            })
+        );
+
+        // Revenue growth - last 6 months (per month)
+        const revenueGrowthData = await Promise.all(
+            last6Months.map(async ({ year, monthNum }) => {
+                const startDate = new Date(year, monthNum - 1, 1);
+                const endDate = new Date(year, monthNum, 0, 23, 59, 59);
+                
+                const result = await Payment.aggregate([
+                    {
+                        $match: {
+                            status: 'completed',
+                            createdAt: { $gte: startDate, $lte: endDate }
+                        }
+                    },
+                    {
+                        $group: {
+                            _id: null,
+                            total: { $sum: '$amount' }
+                        }
+                    }
+                ]);
+                
+                return result.length > 0 ? Math.round(result[0].total) : 0;
+            })
+        );
+
+        // Jobs by status
+        const openJobs = await Job.countDocuments({ status: 'open' });
+        const inProgressJobs = await Job.countDocuments({ status: 'in_progress' });
+        const completedJobs = await Job.countDocuments({ status: 'completed' });
+
+        // If no data exists, provide sample data for visualization
+        const hasData = usersGrowthData.some(val => val > 0) || 
+                       revenueGrowthData.some(val => val > 0) || 
+                       (openJobs + inProgressJobs + completedJobs) > 0;
+
+        if (!hasData) {
+            // Return sample data for empty database
+            return res.status(200).json({
+                userGrowth: {
+                    labels: last6Months.map(m => m.month),
+                    data: [5, 12, 18, 25, 32, 40] // Sample progression
+                },
+                revenueGrowth: {
+                    labels: last6Months.map(m => m.month),
+                    data: [1500, 2300, 3100, 4200, 5800, 7500] // Sample progression
+                },
+                jobsStatus: {
+                    labels: ['Open', 'In Progress', 'Completed'],
+                    data: [8, 5, 12] // Sample data
+                },
+                isSampleData: true // Flag to indicate this is sample data
+            });
+        }
+
+        res.status(200).json({
+            userGrowth: {
+                labels: last6Months.map(m => m.month),
+                data: usersGrowthData
+            },
+            revenueGrowth: {
+                labels: last6Months.map(m => m.month),
+                data: revenueGrowthData
+            },
+            jobsStatus: {
+                labels: ['Open', 'In Progress', 'Completed'],
+                data: [openJobs, inProgressJobs, completedJobs]
+            },
+            isSampleData: false
+        });
+    } catch (error) {
+        console.error('Get chart data error:', error);
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
+        });
+    }
+};
+
 module.exports = {
     getPlatformStatistics,
     getGrowthData,
-    getUserDashboard
+    getUserDashboard,
+    getChartData
 };
