@@ -7,11 +7,16 @@ const {
     getMyPayments,
     refundPayment,
     getAllPayments,
+    getAllPaymentsForAdmin,
     holdPayment,
     releasePayment
 } = require('../Controllers/paymentController');
 const authenticate = require('../middleware/authenticationMiddle');
 const authorize = require('../middleware/authorizationMiddle');
+
+// Admin routes - must come before other routes
+// GET /api/payments/admin/all - get all payments with full details (admin)
+router.get('/admin/all', authenticate, authorize('admin'), getAllPaymentsForAdmin);
 
 /**
  * @swagger

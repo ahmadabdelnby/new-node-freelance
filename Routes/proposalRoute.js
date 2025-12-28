@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const {
   createProposal,
+  createProposalAdmin,
   editProposal, 
   getMyProposals, 
   getAllProposals,
@@ -13,10 +14,15 @@ const {
   markProposalAsViewed
 } = require('../Controllers/proposalController');
 const authenticate = require('../middleware/authenticationMiddle');
+const authorize = require('../middleware/authorizationMiddle');
 const optionalAuth = require('../middleware/optionalAuth');
 const { uploadAttachments } = require('../middleware/uploadMiddleware');
-const { validateProposalCreation, validateMongoId } = require('../middleware/validation');
+const { validateProposalCreation, validateProposalCreationAdmin, validateMongoId } = require('../middleware/validation');
 const { proposalLimiter } = require('../middleware/rateLimiter');
+
+// Admin routes - must come before other routes to avoid conflicts
+// POST /api/proposals/admin/create - create proposal as admin
+router.post('/admin/create', authenticate, authorize('admin'), uploadAttachments, validateProposalCreationAdmin, createProposalAdmin);
 
 // GET /api/proposals - get all proposals (admin)
 router.get('/', authenticate, getAllProposals);

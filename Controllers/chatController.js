@@ -280,6 +280,7 @@ const sendMessage = async (req, res) => {
 const getConversationMessages = async (req, res) => {
     try {
         const userId = req.user.id;
+        const userRole = req.user.role;
         const { conversationId } = req.params;
         const { page = 1, limit = 50 } = req.query;
 
@@ -291,11 +292,13 @@ const getConversationMessages = async (req, res) => {
             });
         }
 
+        // Allow admin to view all conversations
+        const isAdmin = userRole === 'admin';
         const isParticipant = conversation.participants.some(
             p => p.toString() === userId
         );
 
-        if (!isParticipant) {
+        if (!isAdmin && !isParticipant) {
             return res.status(403).json({
                 message: 'You are not a participant in this conversation'
             });

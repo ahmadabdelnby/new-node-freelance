@@ -766,8 +766,73 @@ const rejectProposal = async (req, res) => {
   }
 };
 
+// Admin: Create proposal with job_id/freelancer_id format
+const createProposalAdmin = async (req, res) => {
+  try {
+    const { job_id, freelancer_id, coverLetter, message, bidAmount, deliveryTime, status } = req.body;
+
+    // Use authenticated user as freelancer if not provided
+    const actualFreelancerId = freelancer_id || req.user.id;
+
+    // Check job existence
+    const job = await Job.findById(job_id);
+    if (!job) return res.status(404).json({ message: 'Job not found.' });
+
+    // Prevent duplicate proposals
+    const existingProposal = await Proposal.findOne({ job_id, freelancer_id: actualFreelancerId });
+    if (existingProposal) {
+      return res.status(400).json({ message: 'A proposal already exists for this job and freelancer.' });
+    }
+
+    // Handle file attachments
+    const attachments = [];
+    if (req.files && req.files.length > 0) {
+      req.files.forEach(file => {
+        attachments.push({
+          url: `/public/uploads/attachments/${file.filename}`,
+          fileName: file.originalname,
+          fileType: file.mimetype,
+          fileSize: file.size
+        });
+      });
+    }
+
+    // Create proposal
+    const proposal = await Proposal.create({
+      job_id,
+      freelancer_id: actualFreelancerId,
+      coverLetter,
+      message: message || '',
+      bidAmount,
+      deliveryTime,
+      status: status || 'submitted',
+      attachments
+    });
+
+    // Increment job proposals count
+    await Job.findByIdAndUpdate(job_id, { $inc: { proposalsCount: 1 } });
+
+    // Populate proposal data
+    await proposal.populate([
+      { path: 'job_id', select: 'title description budget' },
+      { path: 'freelancer_id', select: 'first_name last_name email profile_picture' }
+    ]);
+
+    console.log('✅ Admin: Proposal created successfully:', proposal._id);
+
+    res.status(201).json({
+      message: 'Proposal created successfully',
+      data: proposal
+    });
+  } catch (error) {
+    console.error('❌ Error creating proposal (admin):', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 module.exports = {
   createProposal,
+  createProposalAdmin,
   editProposal,
   getMyProposals,
   hireProposal,

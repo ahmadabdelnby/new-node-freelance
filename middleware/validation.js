@@ -154,8 +154,23 @@ const validateJobCreation = [
     body('duration')
         .optional()
         .custom((value) => {
-            const num = typeof value === 'string' ? parseInt(value) : value;
-            return Number.isInteger(num) && num >= 1;
+            // Allow both formats: number or {value: number, unit: string}
+            if (typeof value === 'number') {
+                return Number.isInteger(value) && value >= 1;
+            }
+            if (typeof value === 'string') {
+                const num = parseInt(value);
+                return Number.isInteger(num) && num >= 1;
+            }
+            if (typeof value === 'object' && value !== null) {
+                return (
+                    typeof value.value === 'number' &&
+                    Number.isInteger(value.value) &&
+                    value.value >= 1 &&
+                    typeof value.unit === 'string'
+                );
+            }
+            return false;
         })
         .withMessage('Duration must be at least 1 day'),
     validate
@@ -300,6 +315,30 @@ const validateHoursWorked = [
     validate
 ];
 
+// Admin proposal creation validation (accepts job_id/freelancer_id format)
+const validateProposalCreationAdmin = [
+    body('job_id')
+        .notEmpty()
+        .withMessage('Job ID is required')
+        .isMongoId()
+        .withMessage('Invalid job ID'),
+    body('freelancer_id')
+        .optional()
+        .isMongoId()
+        .withMessage('Invalid freelancer ID'),
+    body('coverLetter')
+        .trim()
+        .isLength({ min: 50, max: 2000 })
+        .withMessage('Cover letter must be between 50 and 2000 characters'),
+    body('bidAmount')
+        .isFloat({ min: 0 })
+        .withMessage('Bid amount must be a positive number'),
+    body('deliveryTime')
+        .isInt({ min: 1 })
+        .withMessage('Delivery time must be at least 1 day'),
+    validate
+];
+
 module.exports = {
     validate,
     validateRegistration,
@@ -307,6 +346,7 @@ module.exports = {
     validateChangePassword,
     validateJobCreation,
     validateProposalCreation,
+    validateProposalCreationAdmin,
     validateContractCreation,
     validateReviewCreation,
     validateMessage,

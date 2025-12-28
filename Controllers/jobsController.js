@@ -823,9 +823,91 @@ const getJobContract = async (req, res) => {
     }
 };
 
+// Get all jobs for admin (all statuses)
+const getAllJobsForAdmin = async (req, res) => {
+    try {
+        const jobs = await job.find({})
+            .populate('client', 'first_name last_name email username profile_picture profile_picture_url createdAt')
+            .populate('specialty', 'name')
+            .populate('skills', 'name')
+            .sort({ createdAt: -1, _id: -1 });
+
+        console.log(`✅ Admin: Retrieved ${jobs.length} jobs (all statuses)`);
+        res.json(jobs);
+    } catch (error) {
+        console.error('Error fetching all jobs:', error);
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+// Create job for admin (supports object format for duration)
+const createJobForAdmin = async (req, res) => {
+    try {
+        const clientId = req.user.id;
+        const { title, description, specialty, skills, budget, duration, deadline } = req.body;
+
+        console.log('📝 Admin creating new job:', {
+            clientId,
+            title,
+            specialty,
+            skillsCount: skills?.length,
+            budget,
+            duration,
+            filesUploaded: req.files?.length || 0
+        });
+
+        // 🔥 Process uploaded attachments
+        const attachments = [];
+        if (req.files && req.files.length > 0) {
+            req.files.forEach(file => {
+                attachments.push({
+                    url: `/uploads/attachments/${file.filename}`,
+                    fileName: file.originalname,
+                    fileType: file.mimetype,
+                    fileSize: file.size
+                });
+            });
+            console.log('✅ Processed', attachments.length, 'attachments');
+        }
+
+        const newJob = new job({
+            client: clientId,
+            title,
+            description,
+            specialty,
+            skills,
+            budget,
+            duration, // Accept duration as-is (supports {value, unit} format)
+            deadline,
+            attachments
+        });
+
+        await newJob.save();
+
+        // Populate the job data before sending response
+        await newJob.populate([
+            { path: 'client', select: 'first_name last_name email profile_picture profile_picture_url' },
+            { path: 'specialty', select: 'name description' },
+            { path: 'skills', select: 'name' }
+        ]);
+
+        console.log('✅ Admin: Job created successfully:', newJob._id);
+
+        res.status(201).json({
+            message: 'Job created successfully',
+            data: newJob
+        });
+    } catch (error) {
+        console.error('❌ Error creating job for admin:', error);
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
 module.exports = {
     createJob,
     getAllJobs,
+    getAllJobsForAdmin,
+    createJobForAdmin,
     searchJobs,
     getJobById,
     updateJobById,
