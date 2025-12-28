@@ -166,6 +166,8 @@ app.use('/Freelancing/api/v1/chat', chatRoute);
 app.use('/Freelancing/api/v1/payments', paymentRoute);
 app.use('/Freelancing/api/v1/statistics', statisticsRoute);
 app.use('/Freelancing/api/v1/funds', fundsRoute);
+app.use('/Freelancing/api/v1/messages', messageRoute);
+app.use('/Freelancing/api/v1/getconversations', convRoute);
 
 //mongoose connection
 mongoose

@@ -1,7 +1,19 @@
 const express = require('express');
 const router = express.Router();
-const {
+// const {
+//     createJob,
+//     getAllJobs,
+//     searchJobs,
+//     getJobById,
+//     updateJobById,
+const { 
     createJob,
+    updateJobEmbeddings, 
+    recommendFreelancers,
+    getAllJobs, 
+    searchJobs, 
+    getJobById, 
+    updateJobById, 
     getAllJobs,
     getAllJobsForAdmin,
     createJobForAdmin,
@@ -60,6 +72,14 @@ const { uploadJobAttachments } = require('../middleware/upload');
  *         description: Job created successfully
  */
 router.post('/', authentic, uploadJobAttachments.array('attachments', 5), validateJobCreation, createJob);
+router.post('/', authentic, validateJobCreation, createJob);
+
+
+//route to update already existing jobs
+router.post('/update-embeddings', authentic, validateJobCreation, updateJobEmbeddings);
+
+//route get recommended freelancers based on similarity and freelancers rating
+router.get('/recommend/:jobId', authentic, recommendFreelancers);
 
 /**
  * Admin route - Create job with extended format support
