@@ -554,17 +554,20 @@ const updateJobById = async (req, res) => {
             return res.status(404).json({ message: 'Job not found' });
         }
 
-        // Check authorization
-        if (existingJob.client.toString() !== req.user.id) {
+        // Check authorization (allow admin to update any job)
+        if (req.user.role !== 'admin' && existingJob.client.toString() !== req.user.id) {
             return res.status(403).json({ message: 'Not authorized to update this job' });
         }
 
-        // 🔥 Professional Rule: Cannot edit jobs that are in_progress, completed, or cancelled
-        if (['in_progress', 'completed', 'cancelled', 'closed'].includes(existingJob.status)) {
-            return res.status(403).json({
-                message: `Cannot edit job with status: ${existingJob.status}`,
-                reason: 'Job is no longer in open state'
-            });
+        // 🔥 Admin can update any job, regular users follow normal rules
+        if (req.user.role !== 'admin') {
+            // 🔥 Professional Rule: Cannot edit jobs that are in_progress, completed, or cancelled
+            if (['in_progress', 'completed', 'cancelled', 'closed'].includes(existingJob.status)) {
+                return res.status(403).json({
+                    message: `Cannot edit job with status: ${existingJob.status}`,
+                    reason: 'Job is no longer in open state'
+                });
+            }
         }
 
         // 🔥 Professional Rule: Check if job has proposals
@@ -577,15 +580,15 @@ const updateJobById = async (req, res) => {
             description: req.body.description
         };
 
-        // 🔥 Professional Rule: If job has proposals, allow limited editing only
-        if (hasProposals) {
+        // 🔥 Professional Rule: If job has proposals, allow limited editing only (unless admin)
+        if (hasProposals && req.user.role !== 'admin') {
             console.log(`⚠️ Job has ${proposalsCount} proposals - Limited editing mode`);
             // Only title and description can be updated
             // Budget, skills, specialty, duration CANNOT be changed
             // (Freelancers submitted proposals based on original requirements)
         } else {
-            // 🔥 No proposals: Allow full editing
-            console.log('✅ Job has no proposals - Full editing allowed');
+            // 🔥 No proposals or admin: Allow full editing
+            console.log('✅ Job has no proposals or user is admin - Full editing allowed');
             updateData.specialty = req.body.specialty;
             updateData.budget = {
                 type: req.body.budgetType || 'fixed',
@@ -597,8 +600,8 @@ const updateJobById = async (req, res) => {
             };
         }
 
-        // Handle skills array (only if no proposals)
-        if (!hasProposals) {
+        // Handle skills array (only if no proposals or admin)
+        if (!hasProposals || req.user.role === 'admin') {
             if (req.body['skills[]']) {
                 updateData.skills = Array.isArray(req.body['skills[]'])
                     ? req.body['skills[]']
@@ -705,34 +708,37 @@ const deleteJobById = async (req, res) => {
             return res.status(404).json({ message: 'Job not found' });
         }
 
-        // 🔥 Professional Rule: Check authorization
-        if (existingJob.client.toString() !== req.user.id) {
+        // 🔥 Professional Rule: Check authorization (allow admin to delete any job)
+        if (req.user.role !== 'admin' && existingJob.client.toString() !== req.user.id) {
             return res.status(403).json({ message: 'Not authorized to delete this job' });
         }
 
-        // 🔥 Professional Rule: Cannot delete jobs with proposals
-        const proposalsCount = await Proposal.countDocuments({ job_id: jobId });
-        if (proposalsCount > 0) {
-            return res.status(403).json({
-                message: 'Cannot delete job with proposals',
-                reason: `This job has ${proposalsCount} proposal(s). Use close job instead.`,
-                proposalsCount,
-                suggestion: 'Use the close job endpoint to close this job'
-            });
+        // 🔥 Admin can delete any job, but regular users follow normal rules
+        if (req.user.role !== 'admin') {
+            // 🔥 Professional Rule: Cannot delete jobs with proposals
+            const proposalsCount = await Proposal.countDocuments({ job_id: jobId });
+            if (proposalsCount > 0) {
+                return res.status(403).json({
+                    message: 'Cannot delete job with proposals',
+                    reason: `This job has ${proposalsCount} proposal(s). Use close job instead.`,
+                    proposalsCount,
+                    suggestion: 'Use the close job endpoint to close this job'
+                });
+            }
+
+            // 🔥 Professional Rule: Cannot delete jobs that are not in open status
+            if (existingJob.status !== 'open') {
+                return res.status(403).json({
+                    message: `Cannot delete job with status: ${existingJob.status}`,
+                    reason: 'Only open jobs without proposals can be deleted',
+                    currentStatus: existingJob.status
+                });
+            }
         }
 
-        // 🔥 Professional Rule: Cannot delete jobs that are not in open status
-        if (existingJob.status !== 'open') {
-            return res.status(403).json({
-                message: `Cannot delete job with status: ${existingJob.status}`,
-                reason: 'Only open jobs without proposals can be deleted',
-                currentStatus: existingJob.status
-            });
-        }
-
-        // ✅ Safe to delete: Open job with no proposals
+        // ✅ Safe to delete: Admin or (Open job with no proposals)
         const deletedJob = await job.findByIdAndDelete(jobId);
-        console.log(`✅ Job deleted: ${jobId} (no proposals, open status)`);
+        console.log(`✅ Job deleted: ${jobId} by ${req.user.role}`);
 
         res.json({
             message: 'Job deleted successfully',
