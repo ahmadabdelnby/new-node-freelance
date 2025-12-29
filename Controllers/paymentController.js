@@ -439,6 +439,49 @@ const releasePayment = async (req, res) => {
     }
 };
 
+// Get All Payments for Admin with Full Details
+const getAllPaymentsForAdmin = async (req, res) => {
+    try {
+        const { status } = req.query;
+
+        let query = {};
+        if (status) query.status = status;
+
+        const payments = await Payment.find(query)
+            .populate({
+                path: 'contract',
+                select: 'title description status budget'
+            })
+            .populate({
+                path: 'payer',
+                select: 'first_name last_name email profile_picture country',
+                populate: {
+                    path: 'country',
+                    select: 'name code'
+                }
+            })
+            .populate({
+                path: 'payee',
+                select: 'first_name last_name email profile_picture country',
+                populate: {
+                    path: 'country',
+                    select: 'name code'
+                }
+            })
+            .sort({ createdAt: -1 });
+
+        console.log('✅ Admin: Retrieved', payments.length, 'payments with full details');
+
+        res.status(200).json(payments);
+    } catch (error) {
+        console.error('❌ Get all payments for admin error:', error);
+        res.status(500).json({
+            message: 'Server error',
+            error: error.message
+        });
+    }
+};
+
 module.exports = {
     createPayment,
     processPayment,
@@ -446,6 +489,7 @@ module.exports = {
     getMyPayments,
     refundPayment,
     getAllPayments,
+    getAllPaymentsForAdmin,
     holdPayment,
     releasePayment
 };

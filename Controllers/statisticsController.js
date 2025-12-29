@@ -328,29 +328,97 @@ const getUserDashboard = async (req, res) => {
     }
 };
 
-// Get formatted chart data for dashboard
+// Get chart data for dashboard with dynamic date ranges
 const getChartData = async (req, res) => {
     try {
+        const { range = '6months', startDate, endDate } = req.query;
+        console.log('📊 Chart data request received with params:', { range, startDate, endDate });
         const currentDate = new Date();
         
-        // Last 6 months data
-        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const last6Months = [];
+        // Calculate date range based on selection
+        let periodMonths = 6; // default
+        let dateArray = [];
+        let isCustomRange = false;
         
-        for (let i = 5; i >= 0; i--) {
-            const date = new Date(currentDate);
-            date.setMonth(date.getMonth() - i);
-            last6Months.push({
-                month: monthNames[date.getMonth()],
-                year: date.getFullYear(),
-                monthNum: date.getMonth() + 1
-            });
+        if (range === 'custom' && startDate && endDate) {
+            isCustomRange = true;
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            
+            // Generate months between start and end date
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const current = new Date(start.getFullYear(), start.getMonth(), 1);
+            
+            while (current <= end) {
+                dateArray.push({
+                    month: monthNames[current.getMonth()],
+                    year: current.getFullYear(),
+                    monthNum: current.getMonth() + 1
+                });
+                current.setMonth(current.getMonth() + 1);
+            }
+        } else {
+            // Determine period based on range
+            switch(range) {
+                case '7days':
+                    periodMonths = 0;
+                    // Generate last 7 days
+                    for (let i = 6; i >= 0; i--) {
+                        const date = new Date(currentDate);
+                        date.setDate(date.getDate() - i);
+                        dateArray.push({
+                            month: `${date.getMonth() + 1}/${date.getDate()}`,
+                            year: date.getFullYear(),
+                            monthNum: date.getMonth() + 1,
+                            day: date.getDate()
+                        });
+                    }
+                    break;
+                case '30days':
+                    periodMonths = 1;
+                    break;
+                case '3months':
+                    periodMonths = 3;
+                    break;
+                case 'year':
+                    periodMonths = 12;
+                    break;
+                case '6months':
+                default:
+                    periodMonths = 6;
+                    break;
+            }
+            
+            // Generate months array for non-custom ranges (except 7days)
+            if (periodMonths > 0) {
+                const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                for (let i = periodMonths - 1; i >= 0; i--) {
+                    const date = new Date(currentDate);
+                    date.setMonth(date.getMonth() - i);
+                    dateArray.push({
+                        month: monthNames[date.getMonth()],
+                        year: date.getFullYear(),
+                        monthNum: date.getMonth() + 1
+                    });
+                }
+            }
         }
 
-        // Users growth - last 6 months (cumulative)
+        console.log('📅 Generated dateArray:', dateArray.length, 'periods');
+        console.log('📅 Labels:', dateArray.map(d => d.month));
+
+        // Users growth data
         const usersGrowthData = await Promise.all(
-            last6Months.map(async ({ year, monthNum }) => {
-                const endDate = new Date(year, monthNum, 0, 23, 59, 59);
+            dateArray.map(async (period) => {
+                let endDate;
+                
+                if (period.day) {
+                    // For daily data
+                    endDate = new Date(period.year, period.monthNum - 1, period.day, 23, 59, 59);
+                } else {
+                    // For monthly data
+                    endDate = new Date(period.year, period.monthNum, 0, 23, 59, 59);
+                }
                 
                 const count = await User.countDocuments({
                     createdAt: { $lte: endDate }
@@ -360,11 +428,20 @@ const getChartData = async (req, res) => {
             })
         );
 
-        // Revenue growth - last 6 months (per month)
+        // Revenue growth data
         const revenueGrowthData = await Promise.all(
-            last6Months.map(async ({ year, monthNum }) => {
-                const startDate = new Date(year, monthNum - 1, 1);
-                const endDate = new Date(year, monthNum, 0, 23, 59, 59);
+            dateArray.map(async (period) => {
+                let startDate, endDate;
+                
+                if (period.day) {
+                    // For daily data
+                    startDate = new Date(period.year, period.monthNum - 1, period.day, 0, 0, 0);
+                    endDate = new Date(period.year, period.monthNum - 1, period.day, 23, 59, 59);
+                } else {
+                    // For monthly data
+                    startDate = new Date(period.year, period.monthNum - 1, 1);
+                    endDate = new Date(period.year, period.monthNum, 0, 23, 59, 59);
+                }
                 
                 const result = await Payment.aggregate([
                     {
@@ -385,30 +462,35 @@ const getChartData = async (req, res) => {
             })
         );
 
-        // Jobs by status
+        // Jobs by status - Get all statuses
         const openJobs = await Job.countDocuments({ status: 'open' });
         const inProgressJobs = await Job.countDocuments({ status: 'in_progress' });
         const completedJobs = await Job.countDocuments({ status: 'completed' });
+        const cancelledJobs = await Job.countDocuments({ status: 'cancelled' });
 
         // If no data exists, provide sample data for visualization
         const hasData = usersGrowthData.some(val => val > 0) || 
                        revenueGrowthData.some(val => val > 0) || 
-                       (openJobs + inProgressJobs + completedJobs) > 0;
+                       (openJobs + inProgressJobs + completedJobs + cancelledJobs) > 0;
 
         if (!hasData) {
             // Return sample data for empty database
             return res.status(200).json({
                 userGrowth: {
-                    labels: last6Months.map(m => m.month),
-                    data: [5, 12, 18, 25, 32, 40] // Sample progression
+                    labels: dateArray.map(m => m.month),
+                    data: range === '7days' 
+                        ? [2, 3, 5, 7, 9, 10, 12]
+                        : [5, 12, 18, 25, 32, 40] // Sample progression
                 },
                 revenueGrowth: {
-                    labels: last6Months.map(m => m.month),
-                    data: [1500, 2300, 3100, 4200, 5800, 7500] // Sample progression
+                    labels: dateArray.map(m => m.month),
+                    data: range === '7days'
+                        ? [150, 230, 310, 420, 580, 650, 750]
+                        : [1500, 2300, 3100, 4200, 5800, 7500] // Sample progression
                 },
                 jobsStatus: {
-                    labels: ['Open', 'In Progress', 'Completed'],
-                    data: [8, 5, 12] // Sample data
+                    labels: ['Open', 'In Progress', 'Completed', 'Cancelled'],
+                    data: [8, 5, 12, 3] // Sample data
                 },
                 isSampleData: true // Flag to indicate this is sample data
             });
@@ -416,16 +498,16 @@ const getChartData = async (req, res) => {
 
         res.status(200).json({
             userGrowth: {
-                labels: last6Months.map(m => m.month),
+                labels: dateArray.map(m => m.month),
                 data: usersGrowthData
             },
             revenueGrowth: {
-                labels: last6Months.map(m => m.month),
+                labels: dateArray.map(m => m.month),
                 data: revenueGrowthData
             },
             jobsStatus: {
-                labels: ['Open', 'In Progress', 'Completed'],
-                data: [openJobs, inProgressJobs, completedJobs]
+                labels: ['Open', 'In Progress', 'Completed', 'Cancelled'],
+                data: [openJobs, inProgressJobs, completedJobs, cancelledJobs]
             },
             isSampleData: false
         });

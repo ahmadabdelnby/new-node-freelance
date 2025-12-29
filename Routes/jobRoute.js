@@ -1,11 +1,21 @@
 const express = require('express');
 const router = express.Router();
-const {
+// const {
+//     createJob,
+//     getAllJobs,
+//     searchJobs,
+//     getJobById,
+//     updateJobById,
+const { 
     createJob,
+    updateJobEmbeddings, 
+    recommendFreelancers,
+    searchJobs, 
+    getJobById, 
+    updateJobById, 
     getAllJobs,
-    searchJobs,
-    getJobById,
-    updateJobById,
+    getAllJobsForAdmin,
+    createJobForAdmin,
     deleteJobById,
     incrementJobViews,
     getJobsByClient,
@@ -15,6 +25,7 @@ const {
     getJobContract
 } = require('../Controllers/jobsController');
 const authentic = require('../middleware/authenticationMiddle');
+const authorize = require('../middleware/authorizationMiddle');
 const optionalAuth = require('../middleware/optionalAuth');
 const { validateJobCreation, validateMongoId } = require('../middleware/validation');
 const { uploadJobAttachments } = require('../middleware/upload');
@@ -57,6 +68,27 @@ const { uploadJobAttachments } = require('../middleware/upload');
  *         description: Job created successfully
  */
 router.post('/', authentic, uploadJobAttachments.array('attachments', 5), validateJobCreation, createJob);
+router.post('/', authentic, validateJobCreation, createJob);
+
+
+//route to update already existing jobs
+router.post('/update-embeddings', authentic, validateJobCreation, updateJobEmbeddings);
+
+//route get recommended freelancers based on similarity and freelancers rating
+router.get('/recommend/:jobId', authentic, recommendFreelancers);
+
+/**
+ * Admin route - Create job with extended format support
+ * Supports duration as {value, unit} object
+ * MUST be before GET / to avoid route conflict
+ */
+router.post('/admin/create', authentic, authorize('admin'), uploadJobAttachments.array('attachments', 5), validateJobCreation, createJobForAdmin);
+
+/**
+ * Admin route - Get all jobs (all statuses)
+ * MUST be before GET / to avoid route conflict
+ */
+router.get('/admin/all', authentic, authorize('admin'), getAllJobsForAdmin);
 
 /**
  * @swagger

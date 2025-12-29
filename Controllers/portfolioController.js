@@ -154,8 +154,8 @@ const updatePortfolioItem = async (req, res) => {
             });
         }
 
-        // Check ownership
-        if (portfolioItem.freelancer.toString() !== freelancerId) {
+        // Check ownership (allow admin to update any portfolio item)
+        if (req.user.role !== 'admin' && portfolioItem.freelancer.toString() !== freelancerId) {
             return res.status(403).json({
                 message: 'You can only update your own portfolio items'
             });
@@ -199,8 +199,8 @@ const deletePortfolioItem = async (req, res) => {
             });
         }
 
-        // Check ownership
-        if (portfolioItem.freelancer.toString() !== freelancerId) {
+        // Check ownership (allow admin to delete any portfolio item)
+        if (req.user.role !== 'admin' && portfolioItem.freelancer.toString() !== freelancerId) {
             return res.status(403).json({
                 message: 'You can only delete your own portfolio items'
             });

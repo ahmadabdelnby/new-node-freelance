@@ -1,8 +1,13 @@
 const job = require('../Models/Jobs');
 const Proposal = require('../Models/proposals');
 const Contract = require('../Models/Contract');
+//new imports for the embedding task
+const OpenAI = require('openai');
+const User = require('../Models/User');
+const mongoose = require('mongoose');
 
-// Create a new job
+// Create a new job with embedding field
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const createJob = async (req, res) => {
     try {
         // Get client ID from authenticated user
@@ -26,6 +31,10 @@ const createJob = async (req, res) => {
                 budget = { type: 'fixed', amount: 0 };
             }
         }
+  try {
+    // Get client ID from authenticated user
+    const clientId = req.user.id;
+    const { title, description, specialty, skills, budget, duration, deadline } = req.body;
 
         console.log('📝 Creating new job:', {
             clientId,
@@ -50,6 +59,14 @@ const createJob = async (req, res) => {
             });
             console.log('✅ Processed', attachments.length, 'attachments');
         }
+    console.log('📝 Creating new job:', {
+      clientId,
+      title,
+      specialty,
+      skillsCount: skills?.length,
+      budget,
+      duration
+    });
 
         const newJob = new job({
             client: clientId,
@@ -65,8 +82,29 @@ const createJob = async (req, res) => {
             deadline,
             attachments // 🔥 Add attachments to job
         });
+    // Generate embedding for the job title + description
+    const textForEmbedding = `${title} ${description}`;
+    const embeddingResponse = await openai.embeddings.create({
+      model: 'text-embedding-3-large', // consistent embedding model
+      input: textForEmbedding
+    });
 
-        await newJob.save();
+    const embedding = embeddingResponse.data[0].embedding;
+
+    // // Create new job with embedding
+    // const newJob = new job({
+    //   client: clientId,
+    //   title,
+    //   description,
+    //   specialty,
+    //   skills,
+    //   budget,
+    //   duration: duration ? { value: duration, unit: 'days' } : undefined,
+    //   deadline,
+    //   embedding // save embedding in DB
+    // });
+
+    await newJob.save();
 
         // Populate the job data before sending response
         await newJob.populate([
@@ -74,6 +112,12 @@ const createJob = async (req, res) => {
             { path: 'specialty', select: 'name description' },
             { path: 'skills', select: 'name' }
         ]);
+    // Populate related fields
+    await newJob.populate([
+      { path: 'client', select: 'first_name last_name email profile_picture' },
+      { path: 'specialty', select: 'name description' },
+      { path: 'skills', select: 'name' }
+    ]);
 
         console.log('✅ Job created successfully:', newJob._id);
 
@@ -112,7 +156,7 @@ const createJob = async (req, res) => {
         }
 
         // 🔥 Check client balance and warn if insufficient
-        const User = require('../Models/User');
+        //const User = require('../Models/User');
         const client = await User.findById(clientId);
         const budgetAmount = budget?.amount || 0;
 
@@ -136,7 +180,161 @@ const createJob = async (req, res) => {
         console.error('❌ Error creating job:', error);
         res.status(500).json({ message: 'Server error', error: error.message });
     }
+    console.log('✅ Job created successfully:', newJob._id);
+    res.status(201).json({ message: 'Job created successfully', job: newJob });
+  } catch (error) {
+    console.error('❌ Error creating job:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
 };
+
+//update already existing jobs in db
+const updateJobEmbeddings = async (req, res) => {
+  try {
+    console.log('🛠️ Updating embeddings for existing jobs...');
+
+    // Fetch all jobs that are missing embeddings or have empty embeddings
+    const jobs = await job.find({ $or: [{ embedding: { $exists: false } }, { embedding: [] }] });
+
+    if (!jobs.length) {
+      return res.json({ message: 'All jobs already have embeddings.' });
+    }
+
+    for (const j of jobs) {
+      const textForEmbedding = `${j.title} ${j.description}`;
+
+      // Generate embedding using large model
+      const response = await openai.embeddings.create({
+        model: 'text-embedding-3-large',
+        input: textForEmbedding
+      });
+
+      j.embedding = response.data[0].embedding;
+
+      await j.save();
+
+      console.log(`✅ Updated embedding for job: ${j._id}`);
+    }
+
+    res.json({ message: `${jobs.length} job embeddings updated successfully.` });
+  } catch (error) {
+    console.error('❌ Error updating job embeddings:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+//get recommended freelancers based on similarity and freelancers rating
+// Cosine similarity helper
+const cosineSimilarity = (vecA, vecB) => {
+  if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
+
+  const dot = vecA.reduce((sum, val, i) => sum + val * vecB[i], 0);
+  const magA = Math.sqrt(vecA.reduce((sum, val) => sum + val * val, 0));
+  const magB = Math.sqrt(vecB.reduce((sum, val) => sum + val * val, 0));
+  return dot / (magA * magB);
+};
+
+const recommendFreelancers = async (req, res) => {
+  try {
+    const jobId = req.params.jobId;
+
+    if (!mongoose.Types.ObjectId.isValid(jobId)) {
+      return res.status(400).json({ message: 'Invalid job ID' });
+    }
+
+    const currentJob = await job.findById(jobId);
+    if (!currentJob || !currentJob.embedding) {
+      return res.status(404).json({ message: 'Job not found or missing embedding' });
+    }
+
+    // Find past jobs that were completed and rated
+    const pastJobs = await job.find({
+      _id: { $ne: currentJob._id },
+      freelancer: { $ne: null },
+      'rating.score': { $exists: true },
+      embedding: { $exists: true }
+    });
+
+    const freelancerScores = {};
+
+    for (const pastJob of pastJobs) {
+      const similarity = cosineSimilarity(currentJob.embedding, pastJob.embedding);
+
+      if (similarity < 0.6) continue; // skip jobs that are too dissimilar
+
+      // Normalize rating to 0-1
+      const ratingScore = pastJob.rating.score / 5;
+
+      // Weighted final score: 70% similarity, 30% rating
+      const finalScore = 0.7 * similarity + 0.3 * ratingScore;
+
+      const freelancerId = pastJob.freelancer.toString();
+      freelancerScores[freelancerId] = Math.max(freelancerScores[freelancerId] || 0, finalScore);
+    }
+
+    // Get top 5 freelancers
+    const topFreelancerIds = Object.entries(freelancerScores)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([id]) => id);
+
+    const freelancers = await User.find({ _id: { $in: topFreelancerIds } })
+      .select('first_name last_name email profile_picture specialties');
+
+    res.json({ jobId, recommendedFreelancers: freelancers });
+  } catch (error) {
+    console.error('❌ Error recommending freelancers:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+
+// Create a new job
+// const createJob = async (req, res) => {
+//     try {
+//         // Get client ID from authenticated user
+//         const clientId = req.user.id;
+//         const { title, description, specialty, skills, budget, duration, deadline } = req.body;
+
+//         console.log('📝 Creating new job:', {
+//             clientId,
+//             title,
+//             specialty,
+//             skillsCount: skills?.length,
+//             budget,
+//             duration
+//         });
+
+//         const newJob = new job({
+//             client: clientId,
+//             title,
+//             description,
+//             specialty,
+//             skills,
+//             budget,
+//             duration: duration ? {
+//                 value: duration,
+//                 unit: 'days'
+//             } : undefined,
+//             deadline
+//         });
+
+//         await newJob.save();
+
+//         // Populate the job data before sending response
+//         await newJob.populate([
+//             { path: 'client', select: 'first_name last_name email profile_picture' },
+//             { path: 'specialty', select: 'name description' },
+//             { path: 'skills', select: 'name' }
+//         ]);
+
+//         console.log('✅ Job created successfully:', newJob._id);
+//         res.status(201).json({ message: 'Job created successfully', job: newJob });
+//     } catch (error) {
+//         console.error('❌ Error creating job:', error);
+//         res.status(500).json({ message: 'Server error', error: error.message });
+//     }
+// };
 
 // Get all jobs with optional filters
 const getAllJobs = async (req, res) => {
@@ -364,17 +562,20 @@ const updateJobById = async (req, res) => {
             return res.status(404).json({ message: 'Job not found' });
         }
 
-        // Check authorization
-        if (existingJob.client.toString() !== req.user.id) {
+        // Check authorization (allow admin to update any job)
+        if (req.user.role !== 'admin' && existingJob.client.toString() !== req.user.id) {
             return res.status(403).json({ message: 'Not authorized to update this job' });
         }
 
-        // 🔥 Professional Rule: Cannot edit jobs that are in_progress, completed, or cancelled
-        if (['in_progress', 'completed', 'cancelled', 'closed'].includes(existingJob.status)) {
-            return res.status(403).json({
-                message: `Cannot edit job with status: ${existingJob.status}`,
-                reason: 'Job is no longer in open state'
-            });
+        // 🔥 Admin can update any job, regular users follow normal rules
+        if (req.user.role !== 'admin') {
+            // 🔥 Professional Rule: Cannot edit jobs that are in_progress, completed, or cancelled
+            if (['in_progress', 'completed', 'cancelled', 'closed'].includes(existingJob.status)) {
+                return res.status(403).json({
+                    message: `Cannot edit job with status: ${existingJob.status}`,
+                    reason: 'Job is no longer in open state'
+                });
+            }
         }
 
         // 🔥 Professional Rule: Check if job has proposals
@@ -387,15 +588,15 @@ const updateJobById = async (req, res) => {
             description: req.body.description
         };
 
-        // 🔥 Professional Rule: If job has proposals, allow limited editing only
-        if (hasProposals) {
+        // 🔥 Professional Rule: If job has proposals, allow limited editing only (unless admin)
+        if (hasProposals && req.user.role !== 'admin') {
             console.log(`⚠️ Job has ${proposalsCount} proposals - Limited editing mode`);
             // Only title and description can be updated
             // Budget, skills, specialty, duration CANNOT be changed
             // (Freelancers submitted proposals based on original requirements)
         } else {
-            // 🔥 No proposals: Allow full editing
-            console.log('✅ Job has no proposals - Full editing allowed');
+            // 🔥 No proposals or admin: Allow full editing
+            console.log('✅ Job has no proposals or user is admin - Full editing allowed');
             updateData.specialty = req.body.specialty;
             updateData.budget = {
                 type: req.body.budgetType || 'fixed',
@@ -407,8 +608,8 @@ const updateJobById = async (req, res) => {
             };
         }
 
-        // Handle skills array (only if no proposals)
-        if (!hasProposals) {
+        // Handle skills array (only if no proposals or admin)
+        if (!hasProposals || req.user.role === 'admin') {
             if (req.body['skills[]']) {
                 updateData.skills = Array.isArray(req.body['skills[]'])
                     ? req.body['skills[]']
@@ -524,38 +725,42 @@ const deleteJobById = async (req, res) => {
             return res.status(404).json({ message: 'Job not found' });
         }
 
-        // 🔥 Professional Rule: Check authorization
-        if (existingJob.client.toString() !== req.user.id) {
+        // 🔥 Professional Rule: Check authorization (allow admin to delete any job)
+        if (req.user.role !== 'admin' && existingJob.client.toString() !== req.user.id) {
             return res.status(403).json({ message: 'Not authorized to delete this job' });
         }
 
-        // 🔥 Professional Rule: Cannot delete jobs with proposals
-        const proposalsCount = await Proposal.countDocuments({ job_id: jobId });
-        if (proposalsCount > 0) {
-            return res.status(403).json({
-                message: 'Cannot delete job with proposals',
-                reason: `This job has ${proposalsCount} proposal(s). Use close job instead.`,
-                proposalsCount,
-                suggestion: 'Use the close job endpoint to close this job'
-            });
+        // 🔥 Admin can delete any job, but regular users follow normal rules
+        if (req.user.role !== 'admin') {
+            // 🔥 Professional Rule: Cannot delete jobs with proposals
+            const proposalsCount = await Proposal.countDocuments({ job_id: jobId });
+            if (proposalsCount > 0) {
+                return res.status(403).json({
+                    message: 'Cannot delete job with proposals',
+                    reason: `This job has ${proposalsCount} proposal(s). Use close job instead.`,
+                    proposalsCount,
+                    suggestion: 'Use the close job endpoint to close this job'
+                });
+            }
+
+            // 🔥 Professional Rule: Cannot delete jobs that are not in open status
+            if (existingJob.status !== 'open') {
+                return res.status(403).json({
+                    message: `Cannot delete job with status: ${existingJob.status}`,
+                    reason: 'Only open jobs without proposals can be deleted',
+                    currentStatus: existingJob.status
+                });
+            }
         }
 
-        // 🔥 Professional Rule: Cannot delete jobs that are not in open status
-        if (existingJob.status !== 'open') {
-            return res.status(403).json({
-                message: `Cannot delete job with status: ${existingJob.status}`,
-                reason: 'Only open jobs without proposals can be deleted',
-                currentStatus: existingJob.status
-            });
-        }
-
-        // ✅ Safe to delete: Open job with no proposals
+        // ✅ Safe to delete: Admin or (Open job with no proposals)
         const deletedJob = await job.findByIdAndDelete(jobId);
 
         // 🔥 Delete all notifications related to this job
         const deletedNotifications = await Notification.deleteMany({ relatedJob: jobId });
         console.log(`✅ Job deleted: ${jobId} (no proposals, open status)`);
         console.log(`✅ Deleted ${deletedNotifications.deletedCount} notification(s) related to this job`);
+        console.log(`✅ Job deleted: ${jobId} by ${req.user.role}`);
 
         res.json({
             message: 'Job deleted successfully',
@@ -872,9 +1077,93 @@ const getJobContract = async (req, res) => {
     }
 };
 
+// Get all jobs for admin (all statuses)
+const getAllJobsForAdmin = async (req, res) => {
+    try {
+        const jobs = await job.find({})
+            .populate('client', 'first_name last_name email username profile_picture profile_picture_url createdAt')
+            .populate('specialty', 'name')
+            .populate('skills', 'name')
+            .sort({ createdAt: -1, _id: -1 });
+
+        console.log(`✅ Admin: Retrieved ${jobs.length} jobs (all statuses)`);
+        res.json(jobs);
+    } catch (error) {
+        console.error('Error fetching all jobs:', error);
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+// Create job for admin (supports object format for duration)
+const createJobForAdmin = async (req, res) => {
+    try {
+        const clientId = req.user.id;
+        const { title, description, specialty, skills, budget, duration, deadline } = req.body;
+
+        console.log('📝 Admin creating new job:', {
+            clientId,
+            title,
+            specialty,
+            skillsCount: skills?.length,
+            budget,
+            duration,
+            filesUploaded: req.files?.length || 0
+        });
+
+        // 🔥 Process uploaded attachments
+        const attachments = [];
+        if (req.files && req.files.length > 0) {
+            req.files.forEach(file => {
+                attachments.push({
+                    url: `/uploads/attachments/${file.filename}`,
+                    fileName: file.originalname,
+                    fileType: file.mimetype,
+                    fileSize: file.size
+                });
+            });
+            console.log('✅ Processed', attachments.length, 'attachments');
+        }
+
+        const newJob = new job({
+            client: clientId,
+            title,
+            description,
+            specialty,
+            skills,
+            budget,
+            duration, // Accept duration as-is (supports {value, unit} format)
+            deadline,
+            attachments
+        });
+
+        await newJob.save();
+
+        // Populate the job data before sending response
+        await newJob.populate([
+            { path: 'client', select: 'first_name last_name email profile_picture profile_picture_url' },
+            { path: 'specialty', select: 'name description' },
+            { path: 'skills', select: 'name' }
+        ]);
+
+        console.log('✅ Admin: Job created successfully:', newJob._id);
+
+        res.status(201).json({
+            message: 'Job created successfully',
+            data: newJob
+        });
+    } catch (error) {
+        console.error('❌ Error creating job for admin:', error);
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
 module.exports = {
     createJob,
+    updateJobEmbeddings,
+    recommendFreelancers,
     getAllJobs,
+    getAllJobsForAdmin,
+    createJobForAdmin,
     searchJobs,
     getJobById,
     updateJobById,

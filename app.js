@@ -37,6 +37,8 @@ const chatRoute = require('./Routes/chatRoute');
 const paymentRoute = require('./Routes/paymentRoute');
 const statisticsRoute = require('./Routes/statisticsRoute');
 const fundsRoute = require('./Routes/fundsRoute');
+const messageRoute = require('./Routes/messageRoute');
+const convRoute = require('./Routes/conversationRoute');
 
 //middleware /must be added at the top
 app.use(express.json());
@@ -167,6 +169,8 @@ app.use('/Freelancing/api/v1/chat', chatRoute);
 app.use('/Freelancing/api/v1/payments', paymentRoute);
 app.use('/Freelancing/api/v1/statistics', statisticsRoute);
 app.use('/Freelancing/api/v1/funds', fundsRoute);
+app.use('/Freelancing/api/v1/messages', messageRoute);
+app.use('/Freelancing/api/v1/getconversations', convRoute);
 app.use('/Freelancing/api/v1/cleanup', require('./Routes/cleanupRoute'));
 
 //mongoose connection
