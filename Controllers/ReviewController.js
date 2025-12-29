@@ -109,10 +109,28 @@ const createReview = async (req, res) => {
     await Notification.create({
       user: reviewee,
       type: 'review_received',
-      title: 'New Review Received',
-      message: `${newReview.reviewer.first_name} ${newReview.reviewer.last_name} left you a ${rating}-star review`,
-      link: `/freelancer/${reviewee}`
+      content: `${newReview.reviewer.first_name} ${newReview.reviewer.last_name} left you a ${rating}-star review`,
+      linkUrl: `/freelancer/${reviewee}`
     });
+
+    // Send Socket.io notification
+    const { getIO } = require('../services/socketService');
+    const io = getIO();
+    if (io) {
+      // Send specific review_received event
+      io.to(`user:${reviewee}`).emit('review_received', {
+        reviewerId: newReview.reviewer._id,
+        reviewerName: `${newReview.reviewer.first_name} ${newReview.reviewer.last_name}`,
+        rating: rating
+      });
+
+      // Send generic notification event to refresh list
+      io.to(`user:${reviewee}`).emit('notification', {
+        type: 'review_received',
+        reviewerId: newReview.reviewer._id,
+        rating: rating
+      });
+    }
 
     // Send email notification
     const template = emailTemplates.reviewReceived(

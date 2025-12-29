@@ -27,7 +27,7 @@ const createOrGetConversation = async (req, res) => {
             });
         }
 
-        // Verify that the job exists and user is the client
+        // Verify that the job exists
         const Job = require('../Models/Jobs');
         const job = await Job.findById(jobId);
 
@@ -37,18 +37,7 @@ const createOrGetConversation = async (req, res) => {
             });
         }
 
-
-        // Handle different possible client fields in job
-        const jobClientId = job.user_id || job.client || job.user;
-        const isClient = jobClientId && jobClientId.toString() === userId;
-
-        if (!isClient) {
-            return res.status(403).json({
-                message: 'Only the job client can initiate conversations'
-            });
-        }
-
-        // Verify that the proposal exists and belongs to the participant
+        // Verify that the proposal exists
         const Proposal = require('../Models/proposals');
         const proposal = await Proposal.findById(proposalId);
 
@@ -64,16 +53,14 @@ const createOrGetConversation = async (req, res) => {
             });
         }
 
-        if (proposal.freelancer_id.toString() !== participantId) {
-            return res.status(400).json({
-                message: 'Proposal does not belong to this freelancer'
-            });
-        }
-
         // Check if conversation exists for this specific job + client + freelancer combination
+        // Use $size to ensure exactly 2 participants (prevent duplicates)
         let conversation = await Conversation.findOne({
             job: jobId,
-            participants: { $all: [userId, participantId] }
+            participants: {
+                $all: [userId, participantId],
+                $size: 2
+            }
         })
             .populate('participants', 'first_name last_name profile_picture email')
             .populate('job', 'title status')
@@ -134,15 +121,47 @@ const getMyConversations = async (req, res) => {
             participants: userId
         })
             .populate('participants', 'first_name last_name profile_picture profile_picture_url email')
-            .populate('job', 'title')
+            .populate({
+                path: 'job',
+                select: 'title description budget duration deadline status specialty client attachments createdAt views proposalsCount',
+                populate: [
+                    { path: 'skills', select: 'name' },
+                    { path: 'specialty', select: 'name' },
+                    { path: 'client', select: 'first_name last_name' }
+                ]
+            })
+            .populate({
+                path: 'proposal',
+                select: 'freelancer_id bidAmount deliveryTime status createdAt coverLetter attachments',
+                populate: {
+                    path: 'freelancer_id',
+                    select: 'first_name last_name profile_picture profile_picture_url email'
+                }
+            })
             .populate('lastMessage')
             .sort({ lastMessageAt: -1 });
 
         console.log('✅ Found conversations for this user:', conversations.length);
 
+        // Calculate unread count for each conversation
+        const conversationsWithUnread = await Promise.all(
+            conversations.map(async (conv) => {
+                const unreadCount = await Message.countDocuments({
+                    conversation: conv._id,
+                    sender: { $ne: userId },
+                    isRead: false
+                });
+
+                return {
+                    ...conv.toObject(),
+                    unreadCount
+                };
+            })
+        );
+
         res.status(200).json({
-            count: conversations.length,
-            conversations
+            count: conversationsWithUnread.length,
+            conversations: conversationsWithUnread
         });
     } catch (error) {
         console.error('Get conversations error:', error);
@@ -185,11 +204,18 @@ const sendMessage = async (req, res) => {
         console.log('📨 [RECEIVE] Received sendMessage request from user:', req.user.id);
         const senderId = req.user.id;
         const { conversationId, content, attachments } = req.body;
-        console.log('📨 [RECEIVE] Request body:', { conversationId, content });
+        console.log('📨 [RECEIVE] Request body:', { conversationId, content, attachments });
 
-        if (!conversationId || !content) {
+        // Validate: need conversationId and either content or attachments
+        if (!conversationId) {
             return res.status(400).json({
-                message: 'conversationId and content are required'
+                message: 'conversationId is required'
+            });
+        }
+
+        if (!content?.trim() && (!attachments || attachments.length === 0)) {
+            return res.status(400).json({
+                message: 'Either content or attachments is required'
             });
         }
 
@@ -226,10 +252,14 @@ const sendMessage = async (req, res) => {
 
         await message.populate('sender', 'first_name last_name profile_picture profile_picture_url');
 
+        // Convert message to plain object to ensure attachments are properly sent
+        const messageObject = message.toObject();
+
         // Emit real-time event to conversation room
         console.log(`📨 [SEND] Emitting new_message to conversation:${conversationId}`);
+        console.log(`📨 [SEND] Message attachments:`, messageObject.attachments);
         const io = getIO();
-        io.to(`conversation:${conversationId}`).emit('new_message', message);
+        io.to(`conversation:${conversationId}`).emit('new_message', messageObject);
         console.log(`✅ [SEND] Message emitted to conversation room`);
 
         // Notify other participants
@@ -256,16 +286,16 @@ const sendMessage = async (req, res) => {
             console.log(`🔔 [NOTIFY] Sending notification to user:${participantId}`);
             io.to(`user:${participantId}`).emit('new_message_notification', {
                 conversationId,
-                message,
+                message: messageObject,
                 senderId,
-                senderName: message.sender.first_name
+                senderName: messageObject.sender.first_name
             });
         }
 
         console.log(`✅ [NOTIFY] Notifications sent to ${otherParticipants.length} participants`);
 
         res.status(201).json({
-            message: message
+            message: messageObject
         });
     } catch (error) {
         console.error('Send message error:', error);

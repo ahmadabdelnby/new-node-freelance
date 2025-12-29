@@ -61,104 +61,113 @@ const uploadPortfolioImages = async (req, res) => {
 
 // Upload attachments
 const uploadAttachments = async (req, res) => {
-  try {
-    // Handle both single file and multiple files
-    const files = req.files || (req.file ? [req.file] : []);
+    try {
+        // Handle both single file and multiple files
+        const files = req.files || (req.file ? [req.file] : []);
 
-    if (files.length === 0) {
-      return res.status(400).json({
-        message: 'No files uploaded'
-      });
+        if (files.length === 0) {
+            return res.status(400).json({
+                message: 'No files uploaded'
+            });
+        }
+
+        const attachments = files.map((file) => {
+            // Fix Arabic filename encoding
+            let fileName = file.originalname;
+            try {
+                // Decode filename if it's encoded incorrectly
+                fileName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+            } catch (e) {
+                // If decoding fails, use original name
+                fileName = file.originalname;
+            }
+
+            return {
+                url: `/uploads/attachments/${file.filename}`,
+                fileName: fileName,
+                fileSize: file.size,
+                fileType: file.mimetype,
+            };
+        });
+
+        // Always return as array wrapped in 'files' property
+        res.status(200).json({
+            message: "Attachments uploaded successfully",
+            files: attachments,
+            count: attachments.length,
+        });
+    } catch (error) {
+        console.error("Upload attachments error:", error);
+        res.status(500).json({
+            message: "Server error",
+            error: error.message,
+        });
     }
-
-    const attachments = files.map((file) => ({
-      url: `/uploads/attachments/${file.filename}`,
-      path: `/uploads/attachments/${file.filename}`,
-      fileName: file.originalname,
-      size: file.size,
-      mimetype: file.mimetype,
-    }));
-
-    // If single file, return single object, otherwise return array
-    const response = files.length === 1 ? attachments[0] : attachments;
-
-    res.status(200).json({
-      message: "Attachments uploaded successfully",
-      ...response,
-      count: attachments.length,
-    });
-  } catch (error) {
-    console.error("Upload attachments error:", error);
-    res.status(500).json({
-      message: "Server error",
-      error: error.message,
-    });
-  }
 };
 
 // Delete file
 const deleteFile = async (req, res) => {
-  try {
-                const fs = require("fs");
-                const { filePath } = req.body;
+    try {
+        const fs = require("fs");
+        const { filePath } = req.body;
 
-                if (!filePath) {
-                    return res.status(400).json({
-                        message: "File path is required",
-                    });
-                }
+        if (!filePath) {
+            return res.status(400).json({
+                message: "File path is required",
+            });
+        }
 
-                // Remove leading slash and 'public' from path
-                const fullPath = path.join(
-                    __dirname,
-                    "..",
-                    filePath.replace("/public/", "Public/")
-                );
+        // Remove leading slash and 'public' from path
+        const fullPath = path.join(
+            __dirname,
+            "..",
+            filePath.replace("/public/", "Public/")
+        );
 
-                // Check if file exists
-                if (!fs.existsSync(fullPath)) {
-                    return res.status(404).json({
-                        message: "File not found",
-                    });
-                }
+        // Check if file exists
+        if (!fs.existsSync(fullPath)) {
+            return res.status(404).json({
+                message: "File not found",
+            });
+        }
 
-                // Delete file
-                fs.unlinkSync(fullPath);
+        // Delete file
+        fs.unlinkSync(fullPath);
 
-                res.status(200).json({
-                    message: "File deleted successfully",
-                });
-            } catch (error) {
-                console.error("Delete file error:", error);
-                res.status(500).json({
-                    message: "Server error",
-                    error: error.message,
-                });
-            }
-        };
+        res.status(200).json({
+            message: "File deleted successfully",
+        });
+    } catch (error) {
+        console.error("Delete file error:", error);
+        res.status(500).json({
+            message: "Server error",
+            error: error.message,
+        });
+    }
+};
 
-        // Parse CV and extract data
-        const parseCV = async (req, res) => {
-            try {
-                if (!req.file) {
-                    return res.status(400).json({
-                        message: "No CV file uploaded",
-                    });
-                }
+// Parse CV and extract data
+const parseCV = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({
+                message: "No CV file uploaded",
+            });
+        }
 
-                // Read the uploaded PDF file
-                const filePath = req.file.path;
-                const dataBuffer = fs.readFileSync(filePath);
-                const pdfData = await pdf(dataBuffer);
-                const cvText = pdfData.text;
+        // Read the uploaded PDF file
+        const filePath = req.file.path;
+        const dataBuffer = fs.readFileSync(filePath);
+        const pdfData = await pdf(dataBuffer);
+        const cvText = pdfData.text;
 
-                // Use OpenAI to extract structured data
-                const completion = await openai.chat.completions.create({
-                    model: "gpt-4o-mini",
-                    messages: [
-                        {
-                            role: "system",
-                            content: `You are a helpful HR assistant. 
+        // Use OpenAI to extract structured data
+        const completion = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [
+                {
+                    role: "system",
+                    content: `You are a helpful HR assistant. 
                     Extract the following details from the resume text: 
                     - fullName
                     - email
@@ -167,43 +176,43 @@ const deleteFile = async (req, res) => {
                     - summary (brief description)
                     
                     Return the result ONLY in valid JSON format.`,
-                        },
-                        {
-                            role: "user",
-                            content: cvText,
-                        },
-                    ],
-                    response_format: { type: "json_object" },
-                });
+                },
+                {
+                    role: "user",
+                    content: cvText,
+                },
+            ],
+            response_format: { type: "json_object" },
+        });
 
-                const extractedData = JSON.parse(completion.choices[0].message.content);
+        const extractedData = JSON.parse(completion.choices[0].message.content);
 
-                // Delete the uploaded file after processing (optional)
-                fs.unlinkSync(filePath);
+        // Delete the uploaded file after processing (optional)
+        fs.unlinkSync(filePath);
 
-                res.status(200).json({
-                    message: "CV parsed successfully",
-                    data: extractedData,
-                });
-            } catch (error) {
-                console.error("Parse CV error:", error);
+        res.status(200).json({
+            message: "CV parsed successfully",
+            data: extractedData,
+        });
+    } catch (error) {
+        console.error("Parse CV error:", error);
 
-                // Clean up file if it exists
-                if (req.file && req.file.path && fs.existsSync(req.file.path)) {
-                    fs.unlinkSync(req.file.path);
-                }
-
-                res.status(500).json({
-                    message: "Error processing CV",
-                    error: error.message,
-                });
-            }
-        };
-
-        module.exports = {
-            uploadProfilePicture,
-            uploadPortfolioImages,
-            uploadAttachments,
-            deleteFile,
-            parseCV
+        // Clean up file if it exists
+        if (req.file && req.file.path && fs.existsSync(req.file.path)) {
+            fs.unlinkSync(req.file.path);
         }
+
+        res.status(500).json({
+            message: "Error processing CV",
+            error: error.message,
+        });
+    }
+};
+
+module.exports = {
+    uploadProfilePicture,
+    uploadPortfolioImages,
+    uploadAttachments,
+    deleteFile,
+    parseCV
+}

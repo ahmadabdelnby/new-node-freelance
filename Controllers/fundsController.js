@@ -349,10 +349,18 @@ const withdrawFunds = async (req, res) => {
 
       const io = getIO();
       if (io) {
+        // Send specific withdrawal_completed event
         io.to(`user:${userId}`).emit('withdrawal_completed', {
           amount: amount,
           paypalEmail: paypalEmail,
           newBalance: updatedUser.balance
+        });
+
+        // Send generic notification event to refresh list
+        io.to(`user:${userId}`).emit('notification', {
+          type: 'withdrawal_completed',
+          amount: amount,
+          paypalEmail: paypalEmail
         });
       }
 

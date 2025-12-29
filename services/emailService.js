@@ -427,6 +427,59 @@ const emailTemplates = {
         `
     }),
 
+    deadlineReminder: (userName, jobTitle, milestone, daysRemaining, contractId) => ({
+        subject: milestone === '24h'
+            ? `🔴 URGENT: Contract Deadline in 24 Hours - ${jobTitle}`
+            : `⏰ Deadline Reminder (${milestone}): ${jobTitle}`,
+        html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9f9f9; padding: 30px; border-radius: 10px;">
+                <div style="background: ${milestone === '24h' ? 'linear-gradient(135deg, #dc3545 0%, #c82333 100%)' : milestone === '90%' ? 'linear-gradient(135deg, #ff9800 0%, #f57c00 100%)' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'}; color: white; padding: 30px; text-align: center; border-radius: 10px;">
+                    <h1>${milestone === '24h' ? '🔴' : milestone === '90%' ? '⚠️' : '⏰'} Deadline Reminder</h1>
+                    <p style="font-size: 18px; margin: 10px 0 0 0;">${milestone} Progress</p>
+                </div>
+                <div style="padding: 30px; background: white; margin-top: 20px; border-radius: 10px;">
+                    <h2>Hi ${userName},</h2>
+                    <p>This is a reminder about your contract deadline for "<strong>${jobTitle}</strong>".</p>
+                    
+                    <div style="background: ${milestone === '24h' ? '#f8d7da' : milestone === '90%' ? '#fff3cd' : '#d1ecf1'}; border-left: 4px solid ${milestone === '24h' ? '#dc3545' : milestone === '90%' ? '#ffc107' : '#17a2b8'}; padding: 20px; margin: 20px 0; border-radius: 5px;">
+                        <div style="font-size: 18px; font-weight: bold; margin-bottom: 10px;">
+                            ${milestone === '24h' ? '🔴 Less Than 24 Hours Remaining!' : milestone === '90%' ? '⚠️ Deadline Approaching Soon' : `📊 Contract ${milestone} Complete`}
+                        </div>
+                        <div style="font-size: 32px; font-weight: bold; color: ${milestone === '24h' ? '#dc3545' : milestone === '90%' ? '#f57c00' : '#667eea'};">
+                            ${daysRemaining} ${daysRemaining === 1 ? 'Day' : 'Days'} Remaining
+                        </div>
+                    </div>
+
+                    ${milestone === '24h' ? `
+                        <div style="background: #fff3cd; border: 2px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px;">
+                            <p style="margin: 0; font-weight: bold;">⚡ Action Required!</p>
+                            <p style="margin: 10px 0 0 0;">Please ensure you submit your work before the deadline to avoid penalties.</p>
+                        </div>
+                    ` : milestone === '90%' ? `
+                        <div style="background: #d1ecf1; border-left: 4px solid #17a2b8; padding: 15px; margin: 20px 0;">
+                            <p style="margin: 0; font-weight: bold;">💡 Reminder</p>
+                            <p style="margin: 10px 0 0 0;">Make sure you're on track to complete the project on time!</p>
+                        </div>
+                    ` : `
+                        <div style="background: #d4edda; border-left: 4px solid #28a745; padding: 15px; margin: 20px 0;">
+                            <p style="margin: 0; font-weight: bold;">✓ Good Progress!</p>
+                            <p style="margin: 10px 0 0 0;">Keep up the great work to meet your deadline.</p>
+                        </div>
+                    `}
+
+                    <div style="text-align: center; margin-top: 30px;">
+                        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/contracts/${contractId}" style="display: inline-block; padding: 14px 35px; background: ${milestone === '24h' ? '#dc3545' : '#667eea'}; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px;">View Contract Details</a>
+                    </div>
+
+                    <p style="margin-top: 30px;">Best regards,<br>The Herfa Platform Team</p>
+                </div>
+                <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
+                    <p>© 2025 Herfa Platform. All rights reserved.</p>
+                </div>
+            </div>
+        `
+    }),
+
     reviewReceived: (revieweeName, reviewerName, rating, comment, projectTitle, profileLink) => ({
         subject: `You Received a ${rating}-Star Review!`,
         html: `

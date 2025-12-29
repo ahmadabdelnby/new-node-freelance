@@ -40,6 +40,17 @@ const contractSchema = new Schema({
         enum: ['hourly', 'fixed'],
         required: true
     },
+    // 🔥 Agreed delivery time from accepted proposal (in days)
+    agreedDeliveryTime: {
+        type: Number,
+        required: true,
+        min: [1, 'Delivery time must be at least 1 day']
+    },
+    // 🔥 Calculated deadline based on startDate + agreedDeliveryTime
+    calculatedDeadline: {
+        type: Date,
+        required: true
+    },
     status: {
         type: String,
         enum: ['active', 'paused', 'completed', 'terminated'],

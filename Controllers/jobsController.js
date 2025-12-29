@@ -86,14 +86,22 @@ const createJob = async (req, res) => {
                 user: clientId,
                 type: 'job_posted',
                 content: `Your job "${title}" has been posted successfully`,
-                linkUrl: `/job/${newJob._id}`,
+                linkUrl: `/jobs/${newJob._id}`,
                 category: 'job',
                 relatedJob: newJob._id
             });
 
             const io = getIO();
             if (io) {
+                // Send specific job_posted event
                 io.to(`user:${clientId}`).emit('job_posted', {
+                    jobId: newJob._id,
+                    jobTitle: title
+                });
+
+                // Send generic notification event to refresh list
+                io.to(`user:${clientId}`).emit('notification', {
+                    type: 'job_posted',
                     jobId: newJob._id,
                     jobTitle: title
                 });
@@ -451,7 +459,7 @@ const updateJobById = async (req, res) => {
                         user: proposal.freelancer_id,
                         type: 'job_updated',
                         content: `The job "${updateData.title || existingJob.title}" you submitted a proposal for has been updated`,
-                        linkUrl: `/job/${jobId}`,
+                        linkUrl: `/jobs/${jobId}`,
                         category: 'job',
                         relatedJob: jobId,
                         relatedProposal: proposal._id
@@ -459,7 +467,15 @@ const updateJobById = async (req, res) => {
 
                     const io = getIO();
                     if (io) {
+                        // Send specific job_updated event
                         io.to(`user:${proposal.freelancer_id}`).emit('job_updated', {
+                            jobId: jobId,
+                            jobTitle: updateData.title || existingJob.title
+                        });
+
+                        // Send generic notification event to refresh list
+                        io.to(`user:${proposal.freelancer_id}`).emit('notification', {
+                            type: 'job_updated',
                             jobId: jobId,
                             jobTitle: updateData.title || existingJob.title
                         });
@@ -500,6 +516,7 @@ const updateJobById = async (req, res) => {
 const deleteJobById = async (req, res) => {
     try {
         const jobId = req.params.id;
+        const Notification = require('../Models/notification');
 
         // Check if job exists
         const existingJob = await job.findById(jobId);
@@ -534,11 +551,16 @@ const deleteJobById = async (req, res) => {
 
         // ✅ Safe to delete: Open job with no proposals
         const deletedJob = await job.findByIdAndDelete(jobId);
+
+        // 🔥 Delete all notifications related to this job
+        const deletedNotifications = await Notification.deleteMany({ relatedJob: jobId });
         console.log(`✅ Job deleted: ${jobId} (no proposals, open status)`);
+        console.log(`✅ Deleted ${deletedNotifications.deletedCount} notification(s) related to this job`);
 
         res.json({
             message: 'Job deleted successfully',
-            jobId: deletedJob._id
+            jobId: deletedJob._id,
+            deletedNotifications: deletedNotifications.deletedCount
         });
     } catch (error) {
         console.error('Error deleting job:', error);
@@ -726,7 +748,7 @@ const closeJobById = async (req, res) => {
                     user: proposal.freelancer_id,
                     type: 'job_closed',
                     content: `The job "${closedJob.title}" has been closed by the client`,
-                    linkUrl: `/job/${jobId}`,
+                    linkUrl: `/jobs/${jobId}`,
                     category: 'job',
                     relatedJob: jobId,
                     relatedProposal: proposal._id
@@ -734,7 +756,15 @@ const closeJobById = async (req, res) => {
 
                 const io = getIO();
                 if (io) {
+                    // Send specific job_closed event
                     io.to(`user:${proposal.freelancer_id}`).emit('job_closed', {
+                        jobId: jobId,
+                        jobTitle: closedJob.title
+                    });
+
+                    // Send generic notification event to refresh list
+                    io.to(`user:${proposal.freelancer_id}`).emit('notification', {
+                        type: 'job_closed',
                         jobId: jobId,
                         jobTitle: closedJob.title
                     });
@@ -761,14 +791,23 @@ const getJobContract = async (req, res) => {
         const jobId = req.params.jobId;
         const userId = req.user.id;
 
+        console.log('🔍 [GET CONTRACT] Request received');
+        console.log('📋 Job ID:', jobId);
+        console.log('👤 User ID:', userId);
+
         // Find the job
         const foundJob = await job.findById(jobId);
         if (!foundJob) {
+            console.log('❌ Job not found:', jobId);
             return res.status(404).json({ message: 'Job not found' });
         }
 
+        console.log('✅ Job found:', foundJob.title);
+        console.log('📊 Job status:', foundJob.status);
+
         // 🔥 Professional: Only show contract for in_progress or completed jobs
         if (foundJob.status !== 'in_progress' && foundJob.status !== 'completed') {
+            console.log('⚠️ Job status not eligible for contract:', foundJob.status);
             return res.status(400).json({
                 message: 'No active contract for this job',
                 jobStatus: foundJob.status
@@ -777,6 +816,8 @@ const getJobContract = async (req, res) => {
 
         // Find the contract
         const Contract = require('../Models/Contract');
+        console.log('🔍 Searching for contract...');
+
         const jobContract = await Contract.findOne({ job: jobId })
             .populate('job', 'title description budget duration skills')
             .populate('client', 'first_name last_name email profile_picture profile_picture_url country')
@@ -788,14 +829,22 @@ const getJobContract = async (req, res) => {
             });
 
         if (!jobContract) {
+            console.log('❌ Contract not found for job:', jobId);
             return res.status(404).json({ message: 'Contract not found for this job' });
         }
+
+        console.log('✅ Contract found:', jobContract._id);
 
         // 🔥 Authorization: Only client or hired freelancer can view
         const isClient = jobContract.client._id.toString() === userId;
         const isFreelancer = jobContract.freelancer._id.toString() === userId;
 
+        console.log('🔐 Authorization check:');
+        console.log('   - Is Client:', isClient);
+        console.log('   - Is Freelancer:', isFreelancer);
+
         if (!isClient && !isFreelancer) {
+            console.log('❌ Authorization failed - user not part of contract');
             return res.status(403).json({
                 message: 'Not authorized to view this contract',
                 reason: 'You are not part of this contract'

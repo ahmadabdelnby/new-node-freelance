@@ -37,9 +37,11 @@ const getUserNotifications = async (req, res, next) => {
 const markAsRead = async (req, res, next) => {
   try {
     const { id } = req.params;
+    const userId = req.user.id || req.user._id;
+
     const notification = await Notification.findOneAndUpdate(
-      { _id: id, user: req.user._id },
-      { isRead: true },
+      { _id: id, user: userId },
+      { isRead: true, readAt: new Date() },
       { new: true }
     );
 
@@ -56,9 +58,11 @@ const markAsRead = async (req, res, next) => {
 const deleteNotification = async (req, res, next) => {
   try {
     const { id } = req.params;
+    const userId = req.user.id || req.user._id;
+
     const deleted = await Notification.findOneAndDelete({
       _id: id,
-      user: req.user._id
+      user: userId
     });
 
     if (!deleted) {
@@ -74,8 +78,10 @@ const deleteNotification = async (req, res, next) => {
 // Mark all notifications as read
 const markAllAsRead = async (req, res, next) => {
   try {
+    const userId = req.user.id || req.user._id;
+
     const result = await Notification.updateMany(
-      { user: req.user._id, isRead: false },
+      { user: userId, isRead: false },
       {
         $set: {
           isRead: true,
@@ -97,8 +103,10 @@ const markAllAsRead = async (req, res, next) => {
 // Get unread count
 const getUnreadCount = async (req, res, next) => {
   try {
+    const userId = req.user.id || req.user._id;
+
     const count = await Notification.countDocuments({
-      user: req.user._id,
+      user: userId,
       isRead: false
     });
 
@@ -114,8 +122,10 @@ const getUnreadCount = async (req, res, next) => {
 // Delete all notifications
 const deleteAllNotifications = async (req, res, next) => {
   try {
+    const userId = req.user.id || req.user._id;
+
     const result = await Notification.deleteMany({
-      user: req.user._id
+      user: userId
     });
 
     res.status(200).json({

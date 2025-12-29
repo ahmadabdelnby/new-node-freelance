@@ -110,6 +110,31 @@ router.get('/search', searchJobs);
 
 /**
  * @swagger
+ * /Freelancing/api/v1/jobs/{jobId}/contract:
+ *   get:
+ *     summary: Get contract details for a job (in_progress or completed only)
+ *     tags: [Jobs]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: jobId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Job ID
+ *     responses:
+ *       200:
+ *         description: Contract details retrieved successfully
+ *       403:
+ *         description: Not authorized to view this contract
+ *       404:
+ *         description: Job or contract not found
+ */
+router.get('/:jobId/contract', authentic, getJobContract);
+
+/**
+ * @swagger
  * /Freelancing/api/v1/jobs/{id}:
  *   get:
  *     summary: Get job by ID
@@ -283,30 +308,5 @@ router.get('/featured', getFeaturedJobs);
  *         description: Job closed successfully
  */
 router.patch('/:id/close', authentic, closeJob);
-
-/**
- * @swagger
- * /Freelancing/api/v1/jobs/{jobId}/contract:
- *   get:
- *     summary: Get contract details for a job (in_progress or completed only)
- *     tags: [Jobs]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: jobId
- *         required: true
- *         schema:
- *           type: string
- *         description: Job ID
- *     responses:
- *       200:
- *         description: Contract details retrieved successfully
- *       403:
- *         description: Not authorized to view this contract
- *       404:
- *         description: Job or contract not found
- */
-router.get('/:jobId/contract', authentic, getJobContract);
 
 module.exports = router;

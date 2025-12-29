@@ -2,8 +2,9 @@ const express = require('express');
 const router = express.Router();
 const {
   createProposal,
-  editProposal, 
-  getMyProposals, 
+  editProposal,
+  getMyProposals,
+  getProposalById,
   getAllProposals,
   hireProposal,
   rejectProposal,
@@ -32,6 +33,9 @@ router.get('/mine', authenticate, getMyProposals);
 
 // GET /api/proposals/job/:jobId - get all proposals for a job (allow viewing count even when not logged in)
 router.get('/job/:jobId', optionalAuth, getProposalsByJob);
+
+// GET /api/proposals/:id - get single proposal by ID
+router.get('/:id', authenticate, validateMongoId, getProposalById);
 
 // PATCH /api/proposals/:id/hire - hire a freelancer for a job (client only)
 router.patch('/:id/hire', authenticate, hireProposal);

@@ -14,9 +14,10 @@ const messageSchema = new Schema({
     },
     content: {
         type: String,
-        required: true,
+        required: false,
         trim: true,
-        maxLength: 5000
+        maxLength: 5000,
+        default: ''
     },
     attachments: [{
         url: String,
@@ -68,6 +69,14 @@ const messageSchema = new Schema({
 messageSchema.index({ conversation: 1, createdAt: -1 });
 messageSchema.index({ sender: 1 });
 messageSchema.index({ isRead: 1 });
+
+// Validation: require either content or attachments
+messageSchema.pre('validate', function (next) {
+    if (!this.content && (!this.attachments || this.attachments.length === 0)) {
+        this.invalidate('content', 'Either content or attachments is required');
+    }
+    next();
+});
 
 const conversationSchema = new Schema({
     participants: [{

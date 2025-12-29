@@ -98,24 +98,25 @@ const pdfFilter = (req, file, cb) => {
   }
 };
 
-// File filter for job attachments (documents and images)
+// File filter for job attachments (all common file types for project deliverables)
 const attachmentFilter = (req, file, cb) => {
-  const allowedTypes = /jpeg|jpg|png|pdf|doc|docx|zip/;
+  // Allow all common file types for project deliverables
+  const allowedTypes = /jpeg|jpg|png|gif|pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|txt|csv|json|xml|html|css|js|ts|jsx|tsx|vue|py|java|cpp|c|h|sql|mp4|mov|avi|mp3|wav|psd|ai|sketch|fig|svg/;
   const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-  const allowedMimeTypes = [
-    'image/jpeg', 'image/jpg', 'image/png',
-    'application/pdf',
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/zip', 'application/x-zip-compressed'
-  ];
-  const mimetype = allowedMimeTypes.includes(file.mimetype);
 
-  if (mimetype && extname) {
+  // For deliverables, be more permissive - allow most file types
+  if (extname) {
     return cb(null, true);
   } else {
-    cb(new Error('Only PDF, DOC, DOCX, JPG, PNG, and ZIP files are allowed'));
+    // Still allow if extension not in list (be permissive for project files)
+    return cb(null, true);
   }
+};
+
+// File filter for deliverables - accept ALL file types
+const deliverableFilter = (req, file, cb) => {
+  // Accept all file types for project deliverables
+  cb(null, true);
 };
 
 // Multer instances
@@ -145,9 +146,9 @@ const uploadCV = multer({
 
 const uploadJobAttachments = multer({
   storage: attachmentStorage,
-  fileFilter: attachmentFilter,
+  fileFilter: deliverableFilter,
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB max per file
+    fileSize: 100 * 1024 * 1024 // 100MB max per file for all attachments
   }
 });
 

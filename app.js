@@ -16,6 +16,7 @@ const swaggerJsDoc = require("swagger-jsdoc");
 const { initializeSocket } = require("./services/socketService");
 const { initializeTransporter } = require("./services/emailService");
 const { apiLimiter } = require("./middleware/rateLimiter");
+const { startDeadlineMonitoring } = require("./check-contract-deadlines");
 
 const userRoute = require('./Routes/userRout');
 const authRoute = require('./Routes/authRoute');
@@ -166,6 +167,7 @@ app.use('/Freelancing/api/v1/chat', chatRoute);
 app.use('/Freelancing/api/v1/payments', paymentRoute);
 app.use('/Freelancing/api/v1/statistics', statisticsRoute);
 app.use('/Freelancing/api/v1/funds', fundsRoute);
+app.use('/Freelancing/api/v1/cleanup', require('./Routes/cleanupRoute'));
 
 //mongoose connection
 mongoose
@@ -174,6 +176,11 @@ mongoose
     console.log("MongoDB connected");
     // Initialize email service
     initializeTransporter();
+
+    // 🔥 Start automated deadline monitoring
+    startDeadlineMonitoring().catch(err => {
+      console.error("⚠️ Failed to start deadline monitoring:", err.message);
+    });
   })
   .catch((err) => console.log(err));
 

@@ -47,9 +47,18 @@ const getMyContracts = async (req, res) => {
             return res.status(404).json({ message: "No contracts found for this user" });
         }
 
+        // 🔥 Add computed fields for backward compatibility
+        const addComputedFields = (contracts) => contracts.map(c => {
+            const obj = c.toObject();
+            // Use agreedDeliveryTime from contract, fallback to proposal if not set
+            obj.deliveryTime = obj.agreedDeliveryTime || obj.proposal?.deliveryTime;
+            obj.deadline = obj.calculatedDeadline || obj.deadline;
+            return obj;
+        });
+
         res.status(200).json({
-            clientContracts,
-            freelancerContracts
+            clientContracts: addComputedFields(clientContracts),
+            freelancerContracts: addComputedFields(freelancerContracts)
         });
     } catch (err) {
         console.error("Error fetching contracts:", err);
@@ -70,7 +79,13 @@ const getContractById = async (req, res) => {
         if (!foundContract) {
             return res.status(404).json({ message: 'Contract not found' });
         }
-        res.status(200).json(foundContract);
+
+        // 🔥 Add computed fields for backward compatibility
+        const contractObj = foundContract.toObject();
+        contractObj.deliveryTime = contractObj.agreedDeliveryTime || contractObj.proposal?.deliveryTime;
+        contractObj.deadline = contractObj.calculatedDeadline || contractObj.deadline;
+
+        res.status(200).json(contractObj);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -267,12 +282,23 @@ const completeContract = async (req, res) => {
             // Send Socket.io notifications
             const io = getIO();
             if (io) {
+                // Notify freelancer about payment
                 io.to(`user:${Contract.freelancer}`).emit('payment_released', {
                     contractId: Contract._id,
                     amount: netAmount
                 });
+                io.to(`user:${Contract.freelancer}`).emit('notification', {
+                    type: 'payment_released',
+                    contractId: Contract._id,
+                    amount: netAmount
+                });
 
+                // Notify client about completion
                 io.to(`user:${Contract.client}`).emit('contract_completed', {
+                    contractId: Contract._id
+                });
+                io.to(`user:${Contract.client}`).emit('notification', {
+                    type: 'contract_completed',
                     contractId: Contract._id
                 });
             }
@@ -458,10 +484,22 @@ const submitWork = async (req, res) => {
         // Send Socket.io notification
         const io = getIO();
         if (io) {
+            // Notify client about work submission
             io.to(`user:${populatedContract.client._id}`).emit('deliverable_submitted', {
                 contractId: contractId,
                 freelancerName: populatedContract.freelancer.first_name,
                 jobTitle: populatedContract.job?.title
+            });
+
+            // Also emit contract_updated to refresh the contract details in real-time
+            io.to(`user:${populatedContract.client._id}`).emit('contract_updated', {
+                contractId: contractId,
+                contract: populatedContract
+            });
+
+            io.to(`user:${populatedContract.freelancer._id}`).emit('contract_updated', {
+                contractId: contractId,
+                contract: populatedContract
             });
         }
 

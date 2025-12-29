@@ -19,7 +19,7 @@ uploadDirs.forEach(dir => {
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
         let uploadPath = 'Public/uploads/';
-        
+
         // Determine upload path based on fieldname
         if (file.fieldname === 'profilePicture') {
             uploadPath += 'profiles/';
@@ -28,7 +28,7 @@ const storage = multer.diskStorage({
         } else if (file.fieldname === 'attachments') {
             uploadPath += 'attachments/';
         }
-        
+
         cb(null, uploadPath);
     },
     filename: function (req, file, cb) {
@@ -45,11 +45,11 @@ const fileFilter = (req, file, cb) => {
     // Allowed image types
     const allowedImageTypes = /jpeg|jpg|png|gif|webp/;
     // Allowed document types
-    const allowedDocTypes = /pdf|doc|docx|txt/;
-    
-    const extname = path.extname(file.originalname).toLowerCase();
+    const allowedDocTypes = /pdf|doc|docx|xls|xlsx|txt|zip|rar/;
+
+    const extname = path.extname(file.originalname).toLowerCase().replace('.', '');
     const mimetype = file.mimetype;
-    
+
     if (file.fieldname === 'profilePicture' || file.fieldname === 'portfolioImages') {
         // Check if image
         if (allowedImageTypes.test(extname) && mimetype.startsWith('image/')) {
@@ -58,14 +58,14 @@ const fileFilter = (req, file, cb) => {
             cb(new Error('Only image files are allowed (jpeg, jpg, png, gif, webp)'));
         }
     } else if (file.fieldname === 'attachments') {
-        // Allow both images and documents
+        // Allow images, documents, and archives
         const isImage = allowedImageTypes.test(extname) && mimetype.startsWith('image/');
         const isDoc = allowedDocTypes.test(extname);
-        
+
         if (isImage || isDoc) {
             cb(null, true);
         } else {
-            cb(new Error('Only images and documents are allowed'));
+            cb(new Error('Only images, documents and archives are allowed'));
         }
     } else {
         cb(new Error('Unexpected field'));
@@ -76,7 +76,7 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
     storage: storage,
     limits: {
-        fileSize: 5 * 1024 * 1024, // 5MB limit
+        fileSize: 10 * 1024 * 1024, // 10MB limit
     },
     fileFilter: fileFilter
 });

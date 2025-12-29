@@ -69,7 +69,7 @@ const createProposal = async (req, res) => {
         user: job.client,
         type: 'new_proposal',
         content: `You received a new proposal for "${job.title}"`,
-        linkUrl: `/job/${job._id}`,
+        linkUrl: `/jobs/${job._id}`,
         category: 'proposal',
         relatedJob: job._id,
         relatedProposal: proposal._id
@@ -78,12 +78,22 @@ const createProposal = async (req, res) => {
       // 🔥 Emit real-time notification via Socket.io
       const io = getIO();
       if (io) {
+        // Send specific new_proposal event (for toast notification)
         io.to(`user:${job.client}`).emit('new_proposal', {
           jobId: job._id,
           jobTitle: job.title,
           proposalId: proposal._id,
           freelancerId: freelancerId
         });
+
+        // Send generic notification event (to refresh notifications list)
+        io.to(`user:${job.client}`).emit('notification', {
+          type: 'new_proposal',
+          jobId: job._id,
+          jobTitle: job.title,
+          proposalId: proposal._id
+        });
+
         console.log(`✅ Real-time notification sent to client ${job.client}`);
       }
     } catch (notifError) {
@@ -321,6 +331,11 @@ const hireProposal = async (req, res) => {
 
     // 🔥 AUTO-CREATE CONTRACT
     const Contract = require('../Models/Contract');
+
+    // Calculate deadline based on proposal deliveryTime
+    const startDate = new Date();
+    const calculatedDeadline = new Date(startDate.getTime() + (proposal.deliveryTime * 24 * 60 * 60 * 1000));
+
     const contract = new Contract({
       job: job._id,
       client: job.client,
@@ -328,12 +343,17 @@ const hireProposal = async (req, res) => {
       proposal: proposal._id,
       agreedAmount: proposal.bidAmount,
       budgetType: job.budget.type,
+      agreedDeliveryTime: proposal.deliveryTime, // 🔥 From proposal
+      calculatedDeadline: calculatedDeadline,    // 🔥 Auto-calculated
+      deadline: calculatedDeadline,              // 🔥 For backward compatibility
       status: 'active',
-      startDate: new Date(),
+      startDate: startDate,
       description: `Contract for: ${job.title}`
     });
     await contract.save();
     console.log('✅ Contract created:', contract._id);
+    console.log('📅 Delivery Time:', proposal.deliveryTime, 'days');
+    console.log('📅 Calculated Deadline:', calculatedDeadline.toLocaleDateString());
 
     // 🔥 AUTO-CREATE PAYMENT IN ESCROW
     const Payment = require('../Models/Payment');
@@ -359,35 +379,75 @@ const hireProposal = async (req, res) => {
     await payment.save();
     console.log('✅ Payment created in escrow:', payment._id);
 
-    // 🔥 SEND NOTIFICATIONS
+    // 🔥 SEND NOTIFICATIONS & SOCKET.IO EVENTS
     try {
       const Notification = require('../Models/notification');
+      const { getIO } = require('../services/socketService');
 
       // Notify freelancer
-      await Notification.create({
+      const freelancerNotif = await Notification.create({
         user: proposal.freelancer_id,
         type: 'proposal_accepted',
-        title: 'Congratulations! Your proposal was accepted',
-        message: `Your proposal for "${job.title}" has been accepted. A contract has been created.`,
-        link: `/contracts/${contract._id}`,
+        content: `🎉 Congratulations! Your proposal for "${job.title}" has been accepted. A contract has been created.`,
+        linkUrl: `/contracts/${contract._id}`,
         relatedJob: job._id,
         relatedProposal: proposal._id,
         relatedContract: contract._id
       });
 
       // Notify client
-      await Notification.create({
+      const clientNotif = await Notification.create({
         user: job.client,
         type: 'contract_created',
-        title: 'Contract Created Successfully',
-        message: `Contract created for "${job.title}" with the selected freelancer.`,
-        link: `/contracts/${contract._id}`,
+        content: `✅ Contract created successfully for "${job.title}" with the selected freelancer.`,
+        linkUrl: `/contracts/${contract._id}`,
         relatedJob: job._id,
         relatedProposal: proposal._id,
         relatedContract: contract._id
       });
 
-      console.log('✅ Notifications sent');
+      console.log('✅ Notifications created in database');
+
+      // 🔥 Send Socket.io real-time notifications
+      const io = getIO();
+      if (io) {
+        // Notify freelancer via Socket.io
+        io.to(`user:${proposal.freelancer_id}`).emit('notification', {
+          notification: freelancerNotif,
+          type: 'proposal_accepted',
+          contract: contract
+        });
+
+        // Notify client via Socket.io
+        io.to(`user:${job.client}`).emit('notification', {
+          notification: clientNotif,
+          type: 'contract_created',
+          contract: contract
+        });
+
+        // 🔥 Emit job status change to all users watching this job
+        io.emit('job_status_changed', {
+          jobId: job._id,
+          jobTitle: job.title,
+          status: 'in_progress',
+          contractId: contract._id
+        });
+
+        // 🔥 Emit proposal accepted event for UI updates
+        io.emit('proposal_accepted', {
+          jobId: job._id,
+          jobTitle: job.title,
+          proposalId: proposal._id,
+          contractId: contract._id,
+          freelancerId: proposal.freelancer_id,
+          clientId: job.client
+        });
+
+        console.log('✅ Socket.io events emitted');
+      } else {
+        console.warn('⚠️ Socket.io not initialized');
+      }
+
     } catch (notifError) {
       console.error('⚠️ Failed to send notifications:', notifError.message);
       // Don't fail the request if notifications fail
@@ -421,17 +481,29 @@ const hireProposal = async (req, res) => {
 
         // Send notifications to rejected freelancers
         const Notification = require('../Models/notification');
+        const { getIO } = require('../services/socketService');
+        const io = getIO();
+
         for (const otherProposal of otherProposals) {
-          await Notification.create({
+          const rejectionNotif = await Notification.create({
             user: otherProposal.freelancer_id._id,
             type: 'proposal_rejected',
-            title: 'Proposal Not Selected',
-            message: `The client has selected another freelancer for "${job.title}".`,
-            link: `/my-proposals`,
+            content: `The client has selected another freelancer for "${job.title}".`,
+            linkUrl: `/my-proposals`,
             relatedJob: job._id,
             relatedProposal: otherProposal._id
           });
+
+          // 🔥 Send Socket.io notification to rejected freelancer
+          if (io) {
+            io.to(`user:${otherProposal.freelancer_id._id}`).emit('notification', {
+              notification: rejectionNotif,
+              type: 'proposal_rejected'
+            });
+          }
         }
+
+        console.log('✅ Rejection notifications sent to other freelancers');
       }
     } catch (updateError) {
       console.error('⚠️ Failed to update other proposals:', updateError.message);
@@ -735,7 +807,7 @@ const rejectProposal = async (req, res) => {
         user: proposal.freelancer_id,
         type: 'proposal_rejected',
         content: `Your proposal for "${job.title}" was not selected by the client`,
-        linkUrl: `/job/${job._id}`,
+        linkUrl: `/jobs/${job._id}`,
         category: 'proposal',
         relatedJob: job._id,
         relatedProposal: proposal._id
@@ -766,10 +838,48 @@ const rejectProposal = async (req, res) => {
   }
 };
 
+// Get single proposal by ID
+const getProposalById = async (req, res) => {
+  try {
+    const proposalId = req.params.id;
+    const userId = req.user.id;
+
+    const proposal = await Proposal.findById(proposalId)
+      .populate('freelancer_id', 'first_name last_name email profile_picture profile_picture_url')
+      .populate({
+        path: 'job_id',
+        select: 'title description budget duration location posted_at required_skills status client',
+        populate: {
+          path: 'client',
+          select: 'first_name last_name email'
+        }
+      });
+
+    if (!proposal) {
+      return res.status(404).json({ message: 'Proposal not found.' });
+    }
+
+    // Check authorization - only client or freelancer can view
+    const job = await Job.findById(proposal.job_id);
+    const isClient = job.client?.toString() === userId || job.user_id?.toString() === userId;
+    const isFreelancer = proposal.freelancer_id?._id?.toString() === userId;
+
+    if (!isClient && !isFreelancer) {
+      return res.status(403).json({ message: 'Access denied. You can only view your own proposals.' });
+    }
+
+    res.status(200).json({ proposal });
+  } catch (err) {
+    console.error('❌ Error in getProposalById:', err);
+    res.status(500).json({ message: 'Server error. Could not fetch proposal.', error: err.message });
+  }
+};
+
 module.exports = {
   createProposal,
   editProposal,
   getMyProposals,
+  getProposalById,
   hireProposal,
   rejectProposal,
   deleteProposal,
