@@ -90,6 +90,11 @@ const jobSchema = new mongoose.Schema({
     // When job was closed/completed
     closedAt: {
         type: Date
+    },
+    // AI embedding for job matching/recommendation
+    embedding: {
+        type: [Number],
+        default: undefined
     }
 }, {
     // Automatically adds createdAt and updatedAt fields
