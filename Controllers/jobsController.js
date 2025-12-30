@@ -201,17 +201,34 @@ const cosineSimilarity = (vecA, vecB) => {
 
 const recommendFreelancers = async (req, res) => {
     try {
+        console.log('🎯 recommendFreelancers called');
+        console.log('Request params:', req.params);
+        console.log('Request user:', req.user);
+        
         const jobId = req.params.jobId;
 
         if (!mongoose.Types.ObjectId.isValid(jobId)) {
+            console.log('❌ Invalid job ID:', jobId);
             return res.status(400).json({ message: 'Invalid job ID' });
         }
 
+        console.log('🔍 Finding job with ID:', jobId);
         const currentJob = await job.findById(jobId);
-        if (!currentJob || !currentJob.embedding) {
+        
+        if (!currentJob) {
+            console.log('❌ Job not found');
+            return res.status(404).json({ message: 'Job not found' });
+        }
+        
+        console.log('✅ Job found:', currentJob.title);
+        console.log('Job has embedding:', !!currentJob.embedding);
+        
+        if (!currentJob.embedding) {
+            console.log('❌ Job missing embedding');
             return res.status(404).json({ message: 'Job not found or missing embedding' });
         }
 
+        console.log('🔍 Finding past jobs...');
         // Find past jobs that were completed and rated
         const pastJobs = await job.find({
             _id: { $ne: currentJob._id },
@@ -220,10 +237,13 @@ const recommendFreelancers = async (req, res) => {
             embedding: { $exists: true }
         });
 
+        console.log('📊 Past jobs found:', pastJobs.length);
+
         const freelancerScores = {};
 
         for (const pastJob of pastJobs) {
             const similarity = cosineSimilarity(currentJob.embedding, pastJob.embedding);
+            console.log(`Similarity with job "${pastJob.title}":`, similarity);
 
             if (similarity < 0.6) continue; // skip jobs that are too dissimilar
 
@@ -235,7 +255,10 @@ const recommendFreelancers = async (req, res) => {
 
             const freelancerId = pastJob.freelancer.toString();
             freelancerScores[freelancerId] = Math.max(freelancerScores[freelancerId] || 0, finalScore);
+            console.log(`Freelancer ${freelancerId} score:`, finalScore);
         }
+
+        console.log('🏆 Freelancer scores:', freelancerScores);
 
         // Get top 5 freelancers
         const topFreelancerIds = Object.entries(freelancerScores)
@@ -243,10 +266,18 @@ const recommendFreelancers = async (req, res) => {
             .slice(0, 5)
             .map(([id]) => id);
 
+        console.log('🎯 Top freelancer IDs:', topFreelancerIds);
+
         const freelancers = await User.find({ _id: { $in: topFreelancerIds } })
             .select('first_name last_name email profile_picture specialties');
 
-        res.json({ jobId, recommendedFreelancers: freelancers });
+        console.log('✅ Freelancers fetched:', freelancers.length);
+        console.log('Freelancers data:', JSON.stringify(freelancers, null, 2));
+
+        const response = { jobId, recommendedFreelancers: freelancers };
+        console.log('📤 Sending response:', response);
+        
+        res.json(response);
     } catch (error) {
         console.error('❌ Error recommending freelancers:', error);
         res.status(500).json({ message: 'Server error', error: error.message });
