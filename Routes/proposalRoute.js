@@ -6,6 +6,7 @@ const {
   editProposal, 
   getMyProposals, 
   getAllProposals,
+  getProposalById,
   hireProposal,
   rejectProposal,
   deleteProposal,

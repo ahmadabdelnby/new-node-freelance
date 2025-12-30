@@ -1,6 +1,7 @@
 //ahmed-dev branch
 const contract = require('../Models/Contract');
 const jwt = require('jsonwebtoken');
+const { getIO } = require('../services/socketService');
 /****************************************************************************************************/
 // Create a new contract
 const createContract = async (req, res) => {
@@ -540,7 +541,7 @@ const reviewWork = async (req, res) => {
         const clientId = req.user._id || req.user.id;
 
         // Find contract
-        const foundContract = await contract.findById(contractId).populate('freelancer client');
+        const foundContract = await contract.findById(contractId).populate('freelancer client job');
         if (!foundContract) {
             return res.status(404).json({ message: 'Contract not found' });
         }
@@ -564,8 +565,6 @@ const reviewWork = async (req, res) => {
         // Update deliverable status
         deliverable.reviewedAt = new Date();
         deliverable.reviewedBy = clientId;
-
-        const io = req.app.get('io');
 
         if (action === 'accept') {
             deliverable.status = 'accepted';
@@ -618,10 +617,14 @@ const reviewWork = async (req, res) => {
             console.log(`📊 Updated client stats: +1 completed job as client`);
 
             // Update Job status to completed
-            await Job.findByIdAndUpdate(foundContract.job, {
-                status: 'completed'
-            });
-            console.log(`✅ Job status updated to completed`);
+            if (foundContract.job) {
+                await Job.findByIdAndUpdate(foundContract.job._id || foundContract.job, {
+                    status: 'completed'
+                });
+                console.log(`✅ Job status updated to completed`);
+            } else {
+                console.warn(`⚠️ No job associated with contract ${foundContract._id}`);
+            }
 
             // Create notification for freelancer about work acceptance
             await Notification.create({
@@ -640,25 +643,35 @@ const reviewWork = async (req, res) => {
                     contractId: foundContract._id,
                     amount: payment ? (payment.amount - payment.platformFee).toFixed(2) : foundContract.agreedAmount
                 });
+
+                // Send contract_updated event to client for timeline update
+                io.to(`user:${foundContract.client._id}`).emit('contract_updated', {
+                    contractId: foundContract._id,
+                    status: 'completed'
+                });
             }
 
-            console.log(`🔔 Work accepted notification sent to freelancer`);
+            console.log(`🔔 Work accepted notification sent to freelancer and client`);
 
             // Send email to freelancer
             try {
-                await emailService.sendWorkAcceptedEmail(
-                    foundContract.freelancer.email,
-                    {
-                        freelancerName: foundContract.freelancer.first_name,
-                        clientName: foundContract.client.first_name,
-                        jobTitle: foundContract.job?.title || 'Contract',
-                        amount: payment ? (payment.amount - payment.platformFee).toFixed(2) : foundContract.agreedAmount,
-                        contractId: foundContract._id
-                    }
-                );
-                console.log(`📧 Work accepted email sent to freelancer`);
+                if (foundContract.freelancer && foundContract.freelancer.email) {
+                    await emailService.sendWorkAcceptedEmail(
+                        foundContract.freelancer.email,
+                        {
+                            freelancerName: foundContract.freelancer.first_name || 'Freelancer',
+                            clientName: foundContract.client.first_name || 'Client',
+                            jobTitle: foundContract.job?.title || 'Contract',
+                            amount: payment ? (payment.amount - payment.platformFee).toFixed(2) : foundContract.agreedAmount,
+                            contractId: foundContract._id
+                        }
+                    );
+                    console.log(`📧 Work accepted email sent to freelancer`);
+                } else {
+                    console.warn(`⚠️ Freelancer email not available for contract ${foundContract._id}`);
+                }
             } catch (emailError) {
-                console.error('Error sending work accepted email:', emailError);
+                console.error('⚠️ Error sending work accepted email:', emailError.message);
             }
 
             res.status(200).json({
@@ -698,9 +711,15 @@ const reviewWork = async (req, res) => {
                     contractId: foundContract._id,
                     revisionNote: revisionNote
                 });
+
+                // Send contract_updated event to client for timeline update
+                io.to(`user:${foundContract.client._id}`).emit('contract_updated', {
+                    contractId: foundContract._id,
+                    status: 'revision_requested'
+                });
             }
 
-            console.log(`🔔 Revision request notification sent to freelancer`);
+            console.log(`🔔 Revision request notification sent to freelancer and client`);
 
             // Send email to freelancer
             try {
@@ -729,8 +748,12 @@ const reviewWork = async (req, res) => {
         }
 
     } catch (error) {
-        console.error('Error reviewing work:', error);
-        res.status(500).json({ error: error.message });
+        console.error('❌ Error reviewing work:', error);
+        res.status(500).json({
+            message: 'Server error while reviewing work',
+            error: error.message,
+            details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
     }
 };
 /****************************************************************************************************/

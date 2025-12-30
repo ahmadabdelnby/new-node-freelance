@@ -6,13 +6,13 @@ const router = express.Router();
 //     searchJobs,
 //     getJobById,
 //     updateJobById,
-const { 
+const {
     createJob,
-    updateJobEmbeddings, 
+    updateJobEmbeddings,
     recommendFreelancers,
-    searchJobs, 
-    getJobById, 
-    updateJobById, 
+    searchJobs,
+    getJobById,
+    updateJobById,
     getAllJobs,
     getAllJobsForAdmin,
     createJobForAdmin,
@@ -68,7 +68,6 @@ const { uploadJobAttachments } = require('../middleware/upload');
  *         description: Job created successfully
  */
 router.post('/', authentic, uploadJobAttachments.array('attachments', 5), validateJobCreation, createJob);
-router.post('/', authentic, validateJobCreation, createJob);
 
 
 //route to update already existing jobs

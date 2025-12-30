@@ -31,10 +31,6 @@ const createJob = async (req, res) => {
                 budget = { type: 'fixed', amount: 0 };
             }
         }
-  try {
-    // Get client ID from authenticated user
-    const clientId = req.user.id;
-    const { title, description, specialty, skills, budget, duration, deadline } = req.body;
 
         console.log('📝 Creating new job:', {
             clientId,
@@ -59,15 +55,17 @@ const createJob = async (req, res) => {
             });
             console.log('✅ Processed', attachments.length, 'attachments');
         }
-    console.log('📝 Creating new job:', {
-      clientId,
-      title,
-      specialty,
-      skillsCount: skills?.length,
-      budget,
-      duration
-    });
 
+        // Generate embedding for the job title + description
+        const textForEmbedding = `${title} ${description}`;
+        const embeddingResponse = await openai.embeddings.create({
+            model: 'text-embedding-3-large', // consistent embedding model
+            input: textForEmbedding
+        });
+
+        const embedding = embeddingResponse.data[0].embedding;
+
+        // Create new job with embedding
         const newJob = new job({
             client: clientId,
             title,
@@ -80,31 +78,11 @@ const createJob = async (req, res) => {
                 unit: 'days'
             } : undefined,
             deadline,
-            attachments // 🔥 Add attachments to job
+            attachments, // 🔥 Add attachments to job
+            embedding // save embedding in DB
         });
-    // Generate embedding for the job title + description
-    const textForEmbedding = `${title} ${description}`;
-    const embeddingResponse = await openai.embeddings.create({
-      model: 'text-embedding-3-large', // consistent embedding model
-      input: textForEmbedding
-    });
 
-    const embedding = embeddingResponse.data[0].embedding;
-
-    // // Create new job with embedding
-    // const newJob = new job({
-    //   client: clientId,
-    //   title,
-    //   description,
-    //   specialty,
-    //   skills,
-    //   budget,
-    //   duration: duration ? { value: duration, unit: 'days' } : undefined,
-    //   deadline,
-    //   embedding // save embedding in DB
-    // });
-
-    await newJob.save();
+        await newJob.save();
 
         // Populate the job data before sending response
         await newJob.populate([
@@ -112,12 +90,6 @@ const createJob = async (req, res) => {
             { path: 'specialty', select: 'name description' },
             { path: 'skills', select: 'name' }
         ]);
-    // Populate related fields
-    await newJob.populate([
-      { path: 'client', select: 'first_name last_name email profile_picture' },
-      { path: 'specialty', select: 'name description' },
-      { path: 'skills', select: 'name' }
-    ]);
 
         console.log('✅ Job created successfully:', newJob._id);
 
@@ -156,7 +128,6 @@ const createJob = async (req, res) => {
         }
 
         // 🔥 Check client balance and warn if insufficient
-        //const User = require('../Models/User');
         const client = await User.findById(clientId);
         const budgetAmount = budget?.amount || 0;
 
@@ -180,112 +151,106 @@ const createJob = async (req, res) => {
         console.error('❌ Error creating job:', error);
         res.status(500).json({ message: 'Server error', error: error.message });
     }
-    console.log('✅ Job created successfully:', newJob._id);
-    res.status(201).json({ message: 'Job created successfully', job: newJob });
-  } catch (error) {
-    console.error('❌ Error creating job:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
 };
 
 //update already existing jobs in db
 const updateJobEmbeddings = async (req, res) => {
-  try {
-    console.log('🛠️ Updating embeddings for existing jobs...');
+    try {
+        console.log('🛠️ Updating embeddings for existing jobs...');
 
-    // Fetch all jobs that are missing embeddings or have empty embeddings
-    const jobs = await job.find({ $or: [{ embedding: { $exists: false } }, { embedding: [] }] });
+        // Fetch all jobs that are missing embeddings or have empty embeddings
+        const jobs = await job.find({ $or: [{ embedding: { $exists: false } }, { embedding: [] }] });
 
-    if (!jobs.length) {
-      return res.json({ message: 'All jobs already have embeddings.' });
+        if (!jobs.length) {
+            return res.json({ message: 'All jobs already have embeddings.' });
+        }
+
+        for (const j of jobs) {
+            const textForEmbedding = `${j.title} ${j.description}`;
+
+            // Generate embedding using large model
+            const response = await openai.embeddings.create({
+                model: 'text-embedding-3-large',
+                input: textForEmbedding
+            });
+
+            j.embedding = response.data[0].embedding;
+
+            await j.save();
+
+            console.log(`✅ Updated embedding for job: ${j._id}`);
+        }
+
+        res.json({ message: `${jobs.length} job embeddings updated successfully.` });
+    } catch (error) {
+        console.error('❌ Error updating job embeddings:', error);
+        res.status(500).json({ message: 'Server error', error: error.message });
     }
-
-    for (const j of jobs) {
-      const textForEmbedding = `${j.title} ${j.description}`;
-
-      // Generate embedding using large model
-      const response = await openai.embeddings.create({
-        model: 'text-embedding-3-large',
-        input: textForEmbedding
-      });
-
-      j.embedding = response.data[0].embedding;
-
-      await j.save();
-
-      console.log(`✅ Updated embedding for job: ${j._id}`);
-    }
-
-    res.json({ message: `${jobs.length} job embeddings updated successfully.` });
-  } catch (error) {
-    console.error('❌ Error updating job embeddings:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
 };
 
 //get recommended freelancers based on similarity and freelancers rating
 // Cosine similarity helper
 const cosineSimilarity = (vecA, vecB) => {
-  if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
+    if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
 
-  const dot = vecA.reduce((sum, val, i) => sum + val * vecB[i], 0);
-  const magA = Math.sqrt(vecA.reduce((sum, val) => sum + val * val, 0));
-  const magB = Math.sqrt(vecB.reduce((sum, val) => sum + val * val, 0));
-  return dot / (magA * magB);
+    const dot = vecA.reduce((sum, val, i) => sum + val * vecB[i], 0);
+    const magA = Math.sqrt(vecA.reduce((sum, val) => sum + val * val, 0));
+    const magB = Math.sqrt(vecB.reduce((sum, val) => sum + val * val, 0));
+    return dot / (magA * magB);
 };
 
 const recommendFreelancers = async (req, res) => {
-  try {
-    const jobId = req.params.jobId;
+    try {
+        const jobId = req.params.jobId;
 
-    if (!mongoose.Types.ObjectId.isValid(jobId)) {
-      return res.status(400).json({ message: 'Invalid job ID' });
+        if (!mongoose.Types.ObjectId.isValid(jobId)) {
+            return res.status(400).json({ message: 'Invalid job ID' });
+        }
+
+        const currentJob = await job.findById(jobId);
+        if (!currentJob || !currentJob.embedding) {
+            return res.status(404).json({ message: 'Job not found or missing embedding' });
+        }
+
+        // Find past jobs that were completed and rated
+        const pastJobs = await job.find({
+            _id: { $ne: currentJob._id },
+            freelancer: { $ne: null },
+            'rating.score': { $exists: true },
+            embedding: { $exists: true }
+        });
+
+        const freelancerScores = {};
+
+        for (const pastJob of pastJobs) {
+            const similarity = cosineSimilarity(currentJob.embedding, pastJob.embedding);
+
+            if (similarity < 0.6) continue; // skip jobs that are too dissimilar
+
+            // Normalize rating to 0-1
+            const ratingScore = pastJob.rating.score / 5;
+
+            // Weighted final score: 70% similarity, 30% rating
+            const finalScore = 0.7 * similarity + 0.3 * ratingScore;
+
+            const freelancerId = pastJob.freelancer.toString();
+            freelancerScores[freelancerId] = Math.max(freelancerScores[freelancerId] || 0, finalScore);
+        }
+
+        // Get top 5 freelancers
+        const topFreelancerIds = Object.entries(freelancerScores)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5)
+            .map(([id]) => id);
+
+        const freelancers = await User.find({ _id: { $in: topFreelancerIds } })
+            .select('first_name last_name email profile_picture specialties');
+
+        res.json({ jobId, recommendedFreelancers: freelancers });
+    } catch (error) {
+        console.error('❌ Error recommending freelancers:', error);
+        res.status(500).json({ message: 'Server error', error: error.message });
     }
-
-    const currentJob = await job.findById(jobId);
-    if (!currentJob || !currentJob.embedding) {
-      return res.status(404).json({ message: 'Job not found or missing embedding' });
-    }
-
-    // Find past jobs that were completed and rated
-    const pastJobs = await job.find({
-      _id: { $ne: currentJob._id },
-      freelancer: { $ne: null },
-      'rating.score': { $exists: true },
-      embedding: { $exists: true }
-    });
-
-    const freelancerScores = {};
-
-    for (const pastJob of pastJobs) {
-      const similarity = cosineSimilarity(currentJob.embedding, pastJob.embedding);
-
-      if (similarity < 0.6) continue; // skip jobs that are too dissimilar
-
-      // Normalize rating to 0-1
-      const ratingScore = pastJob.rating.score / 5;
-
-      // Weighted final score: 70% similarity, 30% rating
-      const finalScore = 0.7 * similarity + 0.3 * ratingScore;
-
-      const freelancerId = pastJob.freelancer.toString();
-      freelancerScores[freelancerId] = Math.max(freelancerScores[freelancerId] || 0, finalScore);
-    }
-
-    // Get top 5 freelancers
-    const topFreelancerIds = Object.entries(freelancerScores)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([id]) => id);
-
-    const freelancers = await User.find({ _id: { $in: topFreelancerIds } })
-      .select('first_name last_name email profile_picture specialties');
-
-    res.json({ jobId, recommendedFreelancers: freelancers });
-  } catch (error) {
-    console.error('❌ Error recommending freelancers:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
 };
 
 

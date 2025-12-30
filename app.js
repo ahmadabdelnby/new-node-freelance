@@ -37,8 +37,8 @@ const chatRoute = require('./Routes/chatRoute');
 const paymentRoute = require('./Routes/paymentRoute');
 const statisticsRoute = require('./Routes/statisticsRoute');
 const fundsRoute = require('./Routes/fundsRoute');
-const messageRoute = require('./Routes/messageRoute');
-const convRoute = require('./Routes/conversationRoute');
+const messageRoute = require('./Routes/MessageRoute');
+const convRoute = require('./Routes/ConversationRoute');
 
 //middleware /must be added at the top
 app.use(express.json());
