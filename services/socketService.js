@@ -76,6 +76,27 @@ const initializeSocket = (server) => {
             }
         });
 
+        // Join job room for lightweight public updates (views, status)
+        socket.on('join_job', async (jobId) => {
+            try {
+                if (!jobId) return;
+                socket.join(`job:${jobId}`);
+                console.log(`✅ [JOIN] User ${socket.userId} joined job room job:${jobId}`);
+            } catch (error) {
+                console.error(`❌ [JOIN JOB] Error:`, error.message);
+            }
+        });
+
+        socket.on('leave_job', (jobId) => {
+            try {
+                if (!jobId) return;
+                socket.leave(`job:${jobId}`);
+                console.log(`✅ [LEAVE] User ${socket.userId} left job room job:${jobId}`);
+            } catch (error) {
+                console.error(`❌ [LEAVE JOB] Error:`, error.message);
+            }
+        });
+
         // Leave conversation
         socket.on('leave_conversation', (conversationId) => {
             console.log(`🚪 [LEAVE] User ${socket.userId} leaving conversation ${conversationId}`);

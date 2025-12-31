@@ -317,11 +317,8 @@ const hireProposal = async (req, res) => {
     proposal.respondedAt = new Date();
     await proposal.save();
 
-    // Reject all other submitted proposals for the same job
-    await Proposal.updateMany(
-      { job_id: job._id, _id: { $ne: proposalId }, status: { $in: ['submitted', 'viewed'] } },
-      { $set: { status: 'rejected', respondedAt: new Date() } }
-    );
+    // Note: other proposals will be updated later to 'not_selected' with
+    // proper notifications and targeted socket emits.
 
     // 🔥 PROFESSIONAL: Update job status to IN_PROGRESS
     // This prevents new proposals from being submitted and removes job from public listings
@@ -425,16 +422,43 @@ const hireProposal = async (req, res) => {
           contract: contract
         });
 
-        // 🔥 Emit job status change to all users watching this job
-        io.emit('job_status_changed', {
+        // 🔥 Emit job status change only to the client and the accepted freelancer
+        io.to(`user:${proposal.freelancer_id}`).emit('job_status_changed', {
           jobId: job._id,
           jobTitle: job.title,
           status: 'in_progress',
           contractId: contract._id
         });
 
-        // 🔥 Emit proposal accepted event for UI updates
-        io.emit('proposal_accepted', {
+        io.to(`user:${job.client}`).emit('job_status_changed', {
+          jobId: job._id,
+          jobTitle: job.title,
+          status: 'in_progress',
+          contractId: contract._id
+        });
+
+        // Also emit a lightweight public status update to the job room so
+        // viewers (including non-authorized freelancers) can update badges
+        // without receiving contract details.
+        io.to(`job:${job._id}`).emit('job_status_public', {
+          jobId: job._id,
+          jobTitle: job.title,
+          status: 'in_progress'
+        });
+
+        // 🔥 Emit proposal accepted event for UI updates (targeted)
+        // Notify the accepted freelancer
+        io.to(`user:${proposal.freelancer_id}`).emit('proposal_accepted', {
+          jobId: job._id,
+          jobTitle: job.title,
+          proposalId: proposal._id,
+          contractId: contract._id,
+          freelancerId: proposal.freelancer_id,
+          clientId: job.client
+        });
+
+        // Notify the client (job owner)
+        io.to(`user:${job.client}`).emit('proposal_accepted', {
           jobId: job._id,
           jobTitle: job.title,
           proposalId: proposal._id,
@@ -496,9 +520,24 @@ const hireProposal = async (req, res) => {
 
           // 🔥 Send Socket.io notification to rejected freelancer
           if (io) {
+            // Debug log to help trace delivery
+            try {
+              console.log(`🔔 Emitting proposal_rejected -> user:${otherProposal.freelancer_id._id} (email: ${otherProposal.freelancer_id.email || 'N/A'})`);
+            } catch (e) { /* ignore logging errors */ }
+
             io.to(`user:${otherProposal.freelancer_id._id}`).emit('notification', {
               notification: rejectionNotif,
               type: 'proposal_rejected'
+            });
+
+            // Also emit a targeted proposal_rejected event so clients can
+            // refresh their MyProposals and show a personal toast immediately.
+            io.to(`user:${otherProposal.freelancer_id._id}`).emit('proposal_rejected', {
+              jobId: job._id,
+              jobTitle: job.title,
+              proposalId: otherProposal._id,
+              freelancerId: otherProposal.freelancer_id._id,
+              clientId: job.client
             });
           }
         }

@@ -68,6 +68,11 @@ const jobSchema = new mongoose.Schema({
         default: 0,
         min: 0
     },
+    // Track which authenticated users have viewed this job to avoid double-counting
+    viewedBy: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    }],
     attachments: [{
         url: String,
         fileName: String,

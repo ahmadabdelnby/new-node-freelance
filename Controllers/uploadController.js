@@ -214,5 +214,53 @@ module.exports = {
     uploadPortfolioImages,
     uploadAttachments,
     deleteFile,
+    // Download attachment with original filename
+    downloadAttachment: async (req, res) => {
+        try {
+            const { filePath, originalName } = req.query;
+
+            if (!filePath) {
+                return res.status(400).json({ message: 'filePath query parameter is required' });
+            }
+
+            // Normalize and prevent path traversal
+            const pathModule = require('path');
+            const fsModule = require('fs');
+
+            // Accept paths like '/uploads/attachments/attachment-...'
+            let clean = filePath.replace(/^\//, '');
+            // Replace leading 'public/' with nothing to map to Public folder
+            clean = clean.replace(/^public\//i, '');
+
+            const candidatePublic = fsModule.existsSync(pathModule.join(__dirname, '..', 'Public'))
+                ? pathModule.join(__dirname, '..', 'Public')
+                : pathModule.join(__dirname, '..', 'public');
+
+            const fullPath = pathModule.join(candidatePublic, clean);
+
+            // Ensure resolved path is within uploads directory
+            const uploadsRoot = pathModule.join(candidatePublic, 'uploads');
+            const resolved = pathModule.resolve(fullPath);
+            if (!resolved.startsWith(pathModule.resolve(uploadsRoot))) {
+                return res.status(400).json({ message: 'Invalid file path' });
+            }
+
+            if (!fsModule.existsSync(fullPath)) {
+                return res.status(404).json({ message: 'File not found' });
+            }
+
+            const sendName = originalName || pathModule.basename(fullPath);
+
+            return res.download(fullPath, sendName, (err) => {
+                if (err) {
+                    console.error('Download error:', err);
+                    if (!res.headersSent) res.status(500).json({ message: 'Error sending file' });
+                }
+            });
+        } catch (error) {
+            console.error('Download attachment error:', error);
+            res.status(500).json({ message: 'Server error', error: error.message });
+        }
+    },
     parseCV
 }

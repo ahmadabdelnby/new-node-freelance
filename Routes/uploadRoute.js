@@ -6,6 +6,7 @@ const {
   uploadAttachments: uploadAttachmentsController,
   deleteFile,
   parseCV,
+  downloadAttachment,
 } = require("../Controllers/uploadController");
 const {
   uploadProfilePicture,
@@ -105,6 +106,12 @@ router.post(
   uploadAttachments,
   uploadAttachmentsController
 );
+
+/**
+ * Download attachment with original filename
+ * Example: GET /Freelancing/api/v1/upload/attachments/download?filePath=/uploads/attachments/attachment-123.zip&originalName=original.zip
+ */
+router.get('/attachments/download', downloadAttachment);
 
 /**
  * @swagger
