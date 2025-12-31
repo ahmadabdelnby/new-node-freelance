@@ -45,9 +45,14 @@ const getPlatformStatistics = async (req, res) => {
         const completedPayments = await Payment.countDocuments({ status: 'completed' });
         const pendingPayments = await Payment.countDocuments({ status: 'pending' });
         
-        // Total revenue
+        // Total revenue and platform fees
         const revenueData = await Payment.aggregate([
-            { $match: { status: 'completed' } },
+            { 
+                $match: { 
+                    status: 'completed',
+                    type: { $ne: 'escrow' } // Exclude escrow payments to avoid double counting
+                } 
+            },
             {
                 $group: {
                     _id: null,
@@ -57,9 +62,20 @@ const getPlatformStatistics = async (req, res) => {
             }
         ]);
 
-        const revenue = revenueData.length > 0 ? revenueData[0] : {
-            totalRevenue: 0,
-            totalPlatformFees: 0
+        // Get platform fees from all payments (including escrow)
+        const platformFeesData = await Payment.aggregate([
+            { $match: { platformFee: { $gt: 0 } } },
+            {
+                $group: {
+                    _id: null,
+                    totalPlatformFees: { $sum: '$platformFee' }
+                }
+            }
+        ]);
+
+        const revenue = {
+            totalRevenue: revenueData.length > 0 ? revenueData[0].totalRevenue : 0,
+            totalPlatformFees: platformFeesData.length > 0 ? platformFeesData[0].totalPlatformFees : 0
         };
 
         // Most popular categories
@@ -175,21 +191,21 @@ const getGrowthData = async (req, res) => {
         }
 
         // Users growth
-        const usersGrowth = await User.aggregate([
+        const usersGrowthRaw = await User.aggregate([
             { $match: { createdAt: { $gte: dateRange } } },
             { $group: { _id: groupBy, count: { $sum: 1 } } },
-            { $sort: { '_id': 1 } }
+            { $sort: { '_id.year': 1, '_id.month': 1, '_id.week': 1, '_id.day': 1 } }
         ]);
 
         // Jobs growth
-        const jobsGrowth = await Job.aggregate([
+        const jobsGrowthRaw = await Job.aggregate([
             { $match: { createdAt: { $gte: dateRange } } },
             { $group: { _id: groupBy, count: { $sum: 1 } } },
-            { $sort: { '_id': 1 } }
+            { $sort: { '_id.year': 1, '_id.month': 1, '_id.week': 1, '_id.day': 1 } }
         ]);
 
         // Revenue growth
-        const revenueGrowth = await Payment.aggregate([
+        const revenueGrowthRaw = await Payment.aggregate([
             { 
                 $match: { 
                     status: 'completed',
@@ -203,8 +219,40 @@ const getGrowthData = async (req, res) => {
                     platformFees: { $sum: '$platformFee' }
                 } 
             },
-            { $sort: { '_id': 1 } }
+            { $sort: { '_id.year': 1, '_id.month': 1, '_id.week': 1, '_id.day': 1 } }
         ]);
+
+        // Format the data with proper labels
+        const formatGrowthData = (data, type = 'count') => {
+            return data.map(item => {
+                let label = '';
+                const id = item._id;
+                
+                if (period === 'month') {
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    label = `${monthNames[id.month - 1]} ${id.year}`;
+                } else if (period === 'week') {
+                    label = `Week ${id.week}, ${id.year}`;
+                } else if (period === 'day') {
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    label = `${monthNames[id.month - 1]} ${id.day}, ${id.year}`;
+                } else if (period === 'year') {
+                    label = `${id.year}`;
+                }
+
+                return {
+                    period: label,
+                    value: type === 'revenue' ? item.revenue : item.count,
+                    ...(type === 'revenue' && { platformFees: item.platformFees })
+                };
+            });
+        };
+
+        const usersGrowth = formatGrowthData(usersGrowthRaw, 'count');
+        const jobsGrowth = formatGrowthData(jobsGrowthRaw, 'count');
+        const revenueGrowth = formatGrowthData(revenueGrowthRaw, 'revenue');
 
         res.status(200).json({
             period,
@@ -392,9 +440,12 @@ const getChartData = async (req, res) => {
             // Generate months array for non-custom ranges (except 7days)
             if (periodMonths > 0) {
                 const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                
+                // Start from first day of current month to avoid date overflow issues
+                const startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+                
                 for (let i = periodMonths - 1; i >= 0; i--) {
-                    const date = new Date(currentDate);
-                    date.setMonth(date.getMonth() - i);
+                    const date = new Date(startDate.getFullYear(), startDate.getMonth() - i, 1);
                     dateArray.push({
                         month: monthNames[date.getMonth()],
                         year: date.getFullYear(),
@@ -477,13 +528,13 @@ const getChartData = async (req, res) => {
             // Return sample data for empty database
             return res.status(200).json({
                 userGrowth: {
-                    labels: dateArray.map(m => m.month),
+                    labels: dateArray.map(m => m.day ? m.month : `${m.month} ${m.year}`),
                     data: range === '7days' 
                         ? [2, 3, 5, 7, 9, 10, 12]
                         : [5, 12, 18, 25, 32, 40] // Sample progression
                 },
                 revenueGrowth: {
-                    labels: dateArray.map(m => m.month),
+                    labels: dateArray.map(m => m.day ? m.month : `${m.month} ${m.year}`),
                     data: range === '7days'
                         ? [150, 230, 310, 420, 580, 650, 750]
                         : [1500, 2300, 3100, 4200, 5800, 7500] // Sample progression
@@ -498,11 +549,11 @@ const getChartData = async (req, res) => {
 
         res.status(200).json({
             userGrowth: {
-                labels: dateArray.map(m => m.month),
+                labels: dateArray.map(m => m.day ? m.month : `${m.month} ${m.year}`),
                 data: usersGrowthData
             },
             revenueGrowth: {
-                labels: dateArray.map(m => m.month),
+                labels: dateArray.map(m => m.day ? m.month : `${m.month} ${m.year}`),
                 data: revenueGrowthData
             },
             jobsStatus: {
