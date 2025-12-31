@@ -284,7 +284,7 @@ router.patch('/:id/close', authentic, closeJobById);
  *       200:
  *         description: View count updated
  */
-router.patch('/:id/view', incrementJobViews);
+router.patch('/:id/view', optionalAuth, incrementJobViews);
 
 /**
  * @swagger

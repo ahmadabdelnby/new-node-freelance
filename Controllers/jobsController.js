@@ -204,7 +204,7 @@ const recommendFreelancers = async (req, res) => {
         console.log('🎯 recommendFreelancers called');
         console.log('Request params:', req.params);
         console.log('Request user:', req.user);
-        
+
         const jobId = req.params.jobId;
 
         if (!mongoose.Types.ObjectId.isValid(jobId)) {
@@ -214,15 +214,15 @@ const recommendFreelancers = async (req, res) => {
 
         console.log('🔍 Finding job with ID:', jobId);
         const currentJob = await job.findById(jobId);
-        
+
         if (!currentJob) {
             console.log('❌ Job not found');
             return res.status(404).json({ message: 'Job not found' });
         }
-        
+
         console.log('✅ Job found:', currentJob.title);
         console.log('Job has embedding:', !!currentJob.embedding);
-        
+
         if (!currentJob.embedding) {
             console.log('❌ Job missing embedding');
             return res.status(404).json({ message: 'Job not found or missing embedding' });
@@ -276,7 +276,7 @@ const recommendFreelancers = async (req, res) => {
 
         const response = { jobId, recommendedFreelancers: freelancers };
         console.log('📤 Sending response:', response);
-        
+
         res.json(response);
     } catch (error) {
         console.error('❌ Error recommending freelancers:', error);
@@ -498,34 +498,21 @@ const getJobById = async (req, res) => {
             const isClient = foundJob.client._id.toString() === userId;
             const isHiredFreelancer = jobContract?.freelancer?._id.toString() === userId;
 
-            // 🔥 Only client and hired freelancer can view in_progress/completed jobs
+            // 🔥 Only client and hired freelancer can view full job/contract details
             if (!isClient && !isHiredFreelancer) {
-                console.log('❌ Unauthorized: User is not client or hired freelancer');
+                console.log('ℹ️ Limited view: User is not client or hired freelancer - returning limited job data');
 
-                // Different messages based on job status
-                const statusMessages = {
-                    'in_progress': {
-                        message: 'This job is currently in progress',
-                        reason: 'A freelancer has been hired and is working on this project',
-                        suggestion: 'Browse other available jobs that match your skills'
-                    },
-                    'completed': {
-                        message: 'This job has been completed',
-                        reason: 'The project has been finished and delivered',
-                        suggestion: 'Check out similar jobs that are currently open'
-                    }
-                };
+                // Return limited job view for other users: they can still view the job page
+                // but must NOT receive contract or acceptedProposal data. This allows
+                // freelancers who were not selected to open the job and see its status
+                // (e.g., in_progress) without leaking contract details.
+                const limitedJob = { ...foundJob.toObject() };
+                // Ensure sensitive fields are not present
+                delete limitedJob.contract;
+                delete limitedJob.acceptedProposal;
+                limitedJob.viewerRole = 'guest';
 
-                const statusInfo = statusMessages[foundJob.status] || statusMessages['in_progress'];
-
-                return res.status(403).json({
-                    message: statusInfo.message,
-                    status: foundJob.status,
-                    reason: statusInfo.reason,
-                    suggestion: statusInfo.suggestion,
-                    available: false,
-                    canViewDetails: false
-                });
+                return res.json(limitedJob);
             }
 
             // ✅ Authorized - Return job with contract and accepted proposal data
@@ -566,7 +553,7 @@ const updateJobById = async (req, res) => {
         // 🔥 Admin can update any job, regular users follow normal rules
         if (req.user.role !== 'admin') {
             // 🔥 Professional Rule: Cannot edit jobs that are in_progress, completed, or cancelled
-            if (['in_progress', 'completed', 'cancelled', 'closed'].includes(existingJob.status)) {
+            if (['in_progress', 'completed', 'cancelled'].includes(existingJob.status)) {
                 return res.status(403).json({
                     message: `Cannot edit job with status: ${existingJob.status}`,
                     reason: 'Job is no longer in open state'
@@ -774,20 +761,66 @@ const incrementJobViews = async (req, res) => {
     try {
         const jobId = req.params.id;
 
+        // Ensure we can access optional authenticated user (route uses optionalAuth)
+        const userId = req.user ? req.user.id || req.user._id : null;
+
+        // Find job
+        const jobDoc = await job.findById(jobId).select('views client viewedBy title');
+        if (!jobDoc) {
+            return res.status(404).json({ message: 'Job not found' });
+        }
+
+        // Do not count views by the job owner
+        if (userId && String(jobDoc.client) === String(userId)) {
+            return res.json({ message: 'Owner view ignored', views: jobDoc.views });
+        }
+
+        // If authenticated user: only count once using viewedBy
+        if (userId) {
+            const alreadyViewed = (Array.isArray(jobDoc.viewedBy) && jobDoc.viewedBy.some(v => String(v) === String(userId)));
+            if (alreadyViewed) {
+                return res.json({ message: 'Already counted', views: jobDoc.views });
+            }
+
+            // Add user to viewedBy and increment views atomically
+            const updatedJob = await job.findByIdAndUpdate(
+                jobId,
+                { $addToSet: { viewedBy: userId }, $inc: { views: 1 } },
+                { new: true }
+            ).select('views');
+
+            // Emit socket event so clients can update in real time
+            try {
+                const { getIO } = require('../services/socketService');
+                const io = getIO();
+                console.log(`🔔 Emitting job_viewed for ${jobId} -> views=${updatedJob.views}`);
+                io.emit('job_viewed', { jobId: jobId, views: updatedJob.views, title: jobDoc.title });
+            } catch (e) {
+                // socket may not be initialized; ignore
+            }
+
+            return res.json({ message: 'View count updated', views: updatedJob.views });
+        }
+
+        // For unauthenticated users we rely on the client to avoid double-calling (e.g., localStorage).
+        // Here we simply increment each request. Client should only call once per browser session.
         const updatedJob = await job.findByIdAndUpdate(
             jobId,
             { $inc: { views: 1 } },
             { new: true }
         ).select('views');
 
-        if (!updatedJob) {
-            return res.status(404).json({ message: 'Job not found' });
+        // Emit socket event
+        try {
+            const { getIO } = require('../services/socketService');
+            const io = getIO();
+            console.log(`🔔 Emitting job_viewed for ${jobId} -> views=${updatedJob.views}`);
+            io.emit('job_viewed', { jobId: jobId, views: updatedJob.views, title: jobDoc.title });
+        } catch (e) {
+            // ignore
         }
 
-        res.json({
-            message: 'View count updated',
-            views: updatedJob.views
-        });
+        res.json({ message: 'View count updated', views: updatedJob.views });
     } catch (error) {
         console.error('Error incrementing views:', error);
         res.status(500).json({ message: 'Server error', error: error.message });
@@ -923,17 +956,17 @@ const closeJobById = async (req, res) => {
             });
         }
 
-        // Close the job (change status to 'closed')
+        // Close the job (change status to 'cancelled')
         const closedJob = await job.findByIdAndUpdate(
             jobId,
-            { status: 'closed' },
+            { status: 'cancelled' },
             { new: true }
         )
             .populate('client', 'first_name last_name email')
             .populate('specialty', 'name')
             .populate('skills', 'name');
 
-        console.log(`✅ Job closed: ${jobId}`);
+        console.log(`✅ Job cancelled: ${jobId}`);
 
         // 🔥 NOTIFY PROPOSAL SUBMITTERS that job was closed
         try {
@@ -948,7 +981,7 @@ const closeJobById = async (req, res) => {
                 await Notification.create({
                     user: proposal.freelancer_id,
                     type: 'job_closed',
-                    content: `The job "${closedJob.title}" has been closed by the client`,
+                    content: `The job "${closedJob.title}" has been cancelled by the client`,
                     linkUrl: `/jobs/${jobId}`,
                     category: 'job',
                     relatedJob: jobId,
@@ -971,13 +1004,13 @@ const closeJobById = async (req, res) => {
                     });
                 }
             }
-            console.log(`✅ Job closed notifications sent to ${proposals.length} freelancers`);
+            console.log(`✅ Job cancelled notifications sent to ${proposals.length} freelancers`);
         } catch (notifError) {
             console.error('⚠️ Failed to send job closed notifications:', notifError.message);
         }
 
         res.json({
-            message: 'Job closed successfully',
+            message: 'Job cancelled successfully',
             job: closedJob
         });
     } catch (error) {

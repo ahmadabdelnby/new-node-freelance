@@ -40,6 +40,9 @@ const fundsRoute = require('./Routes/fundsRoute');
 const messageRoute = require('./Routes/MessageRoute');
 const convRoute = require('./Routes/ConversationRoute');
 
+const path = require('path');
+const fs = require('fs');
+
 //middleware /must be added at the top
 app.use(express.json());
 app.use(cors({
@@ -57,9 +60,11 @@ app.use(helmet({
 // app.use(mongoSanitize()); // Prevent NoSQL injection - DISABLED: causing errors with query params
 app.use(apiLimiter); // Rate limiting
 
-//public folder for images
-app.use("/public", express.static("public"));
-app.use("/uploads", express.static("public/uploads")); // Serve uploaded files
+// public folder for images and uploads
+// Support both 'Public' and 'public' directory names (case differences)
+const candidatePublic = fs.existsSync(path.join(__dirname, 'Public')) ? path.join(__dirname, 'Public') : path.join(__dirname, 'public');
+app.use('/public', express.static(candidatePublic));
+app.use('/uploads', express.static(path.join(candidatePublic, 'uploads'))); // Serve uploaded files
 
 const swagger = swaggerJsDoc({
   definition: {
