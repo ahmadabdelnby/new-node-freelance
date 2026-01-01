@@ -172,7 +172,7 @@ const parseCV = async (req, res) => {
                     - fullName
                     - email
                     - phone
-                    - skills (array of strings)
+                    - skills (array of strings - extract all technical skills, tools, programming languages, frameworks)
                     - summary (brief description)
                     
                     Return the result ONLY in valid JSON format.`,
@@ -187,12 +187,34 @@ const parseCV = async (req, res) => {
 
         const extractedData = JSON.parse(completion.choices[0].message.content);
 
+        // 🔥 Match extracted skills with database skills
+        let matchedSkillIds = [];
+        if (extractedData.skills && Array.isArray(extractedData.skills) && extractedData.skills.length > 0) {
+            const Skill = require('../Models/Skills');
+            
+            // Create case-insensitive regex patterns for each extracted skill
+            const skillQueries = extractedData.skills.map(skillName => ({
+                name: { $regex: new RegExp(`^${skillName.trim()}$`, 'i') }
+            }));
+            
+            // Find matching skills in database
+            const matchedSkills = await Skill.find({ $or: skillQueries });
+            matchedSkillIds = matchedSkills.map(s => s._id);
+            
+            console.log('📊 CV Skills extracted:', extractedData.skills);
+            console.log('✅ Matched skills in DB:', matchedSkills.map(s => s.name));
+            console.log('🔑 Matched skill IDs:', matchedSkillIds);
+        }
+
         // Delete the uploaded file after processing (optional)
         fs.unlinkSync(filePath);
 
         res.status(200).json({
             message: "CV parsed successfully",
-            data: extractedData,
+            data: {
+                ...extractedData,
+                matchedSkillIds: matchedSkillIds // 🔥 Include matched skill IDs
+            },
         });
     } catch (error) {
         console.error("Parse CV error:", error);
