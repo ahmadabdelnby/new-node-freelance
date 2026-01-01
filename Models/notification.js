@@ -14,6 +14,7 @@ const notificationSchema = new Schema({
             'new_proposal', 'proposal_accepted', 'proposal_rejected', 'proposal_shortlisted',
             // Contracts
             'contract_created', 'contract_completed', 'contract_cancelled', 'contract_disputed',
+            'contract_updated', 'contract_modification_requested', 'contract_modification_approved', 'contract_modification_rejected',
             'deliverable_submitted', 'deliverable_accepted', 'deliverable_rejected',
             // Payments
             'payment_received', 'payment_sent', 'payment_released',
