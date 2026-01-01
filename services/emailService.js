@@ -521,6 +521,123 @@ const emailTemplates = {
                 </div>
             </div>
         `
+    }),
+
+    // Contract Modification Request Templates
+    contractModificationRequested: (clientName, freelancerName, jobTitle, modificationType, currentValues, requestedValues, reason, contractId) => ({
+        subject: `📝 Contract Modification Request: ${jobTitle}`,
+        html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9f9f9; padding: 30px; border-radius: 10px;">
+                <div style="background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); color: white; padding: 30px; text-align: center; border-radius: 10px;">
+                    <h1>📝 Contract Modification Request</h1>
+                </div>
+                <div style="padding: 30px; background: white; margin-top: 20px; border-radius: 10px;">
+                    <h2>Hi ${clientName},</h2>
+                    <p><strong>${freelancerName}</strong> has requested a modification to your contract for "<strong>${jobTitle}</strong>".</p>
+                    
+                    <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 20px; margin: 20px 0;">
+                        <p style="margin: 0; font-weight: bold;">📋 Modification Type: ${modificationType === 'budget' ? 'Budget Change' : modificationType === 'deadline' ? 'Deadline Extension' : 'Budget & Deadline Change'}</p>
+                    </div>
+
+                    <div style="background: #f8f9fa; padding: 20px; margin: 20px 0; border-radius: 5px;">
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <tr style="background: #e9ecef;">
+                                <th style="padding: 10px; text-align: left; border-bottom: 2px solid #dee2e6;">Field</th>
+                                <th style="padding: 10px; text-align: center; border-bottom: 2px solid #dee2e6;">Current</th>
+                                <th style="padding: 10px; text-align: center; border-bottom: 2px solid #dee2e6;">Requested</th>
+                            </tr>
+                            ${(modificationType === 'budget' || modificationType === 'both') ? `
+                            <tr>
+                                <td style="padding: 10px; border-bottom: 1px solid #dee2e6;">💰 Budget</td>
+                                <td style="padding: 10px; text-align: center; border-bottom: 1px solid #dee2e6;">$${currentValues.budget}</td>
+                                <td style="padding: 10px; text-align: center; border-bottom: 1px solid #dee2e6; font-weight: bold; color: ${requestedValues.budget > currentValues.budget ? '#dc3545' : '#28a745'};">$${requestedValues.budget}</td>
+                            </tr>
+                            ` : ''}
+                            ${(modificationType === 'deadline' || modificationType === 'both') ? `
+                            <tr>
+                                <td style="padding: 10px; border-bottom: 1px solid #dee2e6;">📅 Delivery Time</td>
+                                <td style="padding: 10px; text-align: center; border-bottom: 1px solid #dee2e6;">${currentValues.deliveryTime} days</td>
+                                <td style="padding: 10px; text-align: center; border-bottom: 1px solid #dee2e6; font-weight: bold; color: #f57c00;">${requestedValues.deliveryTime} days</td>
+                            </tr>
+                            ` : ''}
+                        </table>
+                    </div>
+
+                    <div style="background: #e9ecef; padding: 15px; margin: 20px 0; border-radius: 5px;">
+                        <p style="margin: 0; font-weight: bold;">📝 Reason:</p>
+                        <p style="margin: 10px 0 0 0; font-style: italic;">"${reason}"</p>
+                    </div>
+
+                    ${(modificationType === 'budget' || modificationType === 'both') && requestedValues.budget > currentValues.budget ? `
+                    <div style="background: #f8d7da; border-left: 4px solid #dc3545; padding: 15px; margin: 20px 0;">
+                        <p style="margin: 0;"><strong>⚠️ Budget Increase Notice:</strong></p>
+                        <p style="margin: 5px 0 0 0;">If approved, an additional <strong>$${(requestedValues.budget - currentValues.budget).toFixed(2)}</strong> will be deducted from your wallet and added to escrow.</p>
+                    </div>
+                    ` : ''}
+
+                    ${(modificationType === 'budget' || modificationType === 'both') && requestedValues.budget < currentValues.budget ? `
+                    <div style="background: #d4edda; border-left: 4px solid #28a745; padding: 15px; margin: 20px 0;">
+                        <p style="margin: 0;"><strong>💰 Budget Decrease Notice:</strong></p>
+                        <p style="margin: 5px 0 0 0;">If approved, <strong>$${(currentValues.budget - requestedValues.budget).toFixed(2)}</strong> will be refunded from escrow to your wallet.</p>
+                    </div>
+                    ` : ''}
+
+                    <div style="text-align: center; margin-top: 30px;">
+                        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/contracts/${contractId}/modification-requests" style="display: inline-block; padding: 14px 35px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; font-weight: bold;">Review Request</a>
+                    </div>
+
+                    <p style="margin-top: 30px;">Best regards,<br>The Herfa Platform Team</p>
+                </div>
+                <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
+                    <p>© 2025 Herfa Platform. All rights reserved.</p>
+                </div>
+            </div>
+        `
+    }),
+
+    contractModificationResponse: (freelancerName, jobTitle, action, responseNote, contractId) => ({
+        subject: action === 'approve'
+            ? `✅ Contract Modification Approved: ${jobTitle}`
+            : `❌ Contract Modification Rejected: ${jobTitle}`,
+        html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9f9f9; padding: 30px; border-radius: 10px;">
+                <div style="background: ${action === 'approve' ? 'linear-gradient(135deg, #28a745 0%, #20c997 100%)' : 'linear-gradient(135deg, #dc3545 0%, #c82333 100%)'}; color: white; padding: 30px; text-align: center; border-radius: 10px;">
+                    <h1>${action === 'approve' ? '✅ Modification Approved!' : '❌ Modification Rejected'}</h1>
+                </div>
+                <div style="padding: 30px; background: white; margin-top: 20px; border-radius: 10px;">
+                    <h2>Hi ${freelancerName},</h2>
+                    <p>Your contract modification request for "<strong>${jobTitle}</strong>" has been <strong>${action === 'approve' ? 'approved' : 'rejected'}</strong> by the client.</p>
+                    
+                    ${action === 'approve' ? `
+                    <div style="background: #d4edda; border-left: 4px solid #28a745; padding: 20px; margin: 20px 0;">
+                        <p style="margin: 0;"><strong>✅ Changes Applied!</strong></p>
+                        <p style="margin: 5px 0 0 0;">The contract has been updated with the new terms. You can now continue working with the updated budget/deadline.</p>
+                    </div>
+                    ` : `
+                    <div style="background: #f8d7da; border-left: 4px solid #dc3545; padding: 20px; margin: 20px 0;">
+                        <p style="margin: 0;"><strong>Request Not Approved</strong></p>
+                        <p style="margin: 5px 0 0 0;">The client has decided not to approve your modification request. Please continue with the original contract terms.</p>
+                    </div>
+                    `}
+
+                    ${responseNote ? `
+                    <div style="background: #e9ecef; padding: 15px; margin: 20px 0; border-radius: 5px;">
+                        <p style="margin: 0; font-weight: bold;">💬 Client's Note:</p>
+                        <p style="margin: 10px 0 0 0; font-style: italic;">"${responseNote}"</p>
+                    </div>
+                    ` : ''}
+
+                    <div style="text-align: center; margin-top: 30px;">
+                        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/contracts/${contractId}" style="display: inline-block; padding: 14px 35px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; font-weight: bold;">View Contract</a>
+                    </div>
+
+                    <p style="margin-top: 30px;">Best regards,<br>The Herfa Platform Team</p>
+                </div>
+                <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
+                    <p>© 2025 Herfa Platform. All rights reserved.</p>
+                </div>
+            </div>
+        `
     })
 };
 

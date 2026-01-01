@@ -40,6 +40,7 @@ const fundsRoute = require('./Routes/fundsRoute');
 const messageRoute = require('./Routes/MessageRoute');
 const convRoute = require('./Routes/ConversationRoute');
 const jobInvitationRoute = require('./Routes/jobInvitationRoute');
+const contractModificationRoute = require('./Routes/contractModificationRoute');
 
 const path = require('path');
 const fs = require('fs');
@@ -178,6 +179,7 @@ app.use('/Freelancing/api/v1/funds', fundsRoute);
 app.use('/Freelancing/api/v1/messages', messageRoute);
 app.use('/Freelancing/api/v1/getconversations', convRoute);
 app.use('/Freelancing/api/v1/job-invitations', jobInvitationRoute);
+app.use('/Freelancing/api/v1/contract-modifications', contractModificationRoute);
 app.use('/Freelancing/api/v1/cleanup', require('./Routes/cleanupRoute'));
 
 //mongoose connection
