@@ -12,7 +12,10 @@ const {
     completeContract,
     updateHoursWorked,
     submitWork,
-    reviewWork
+    reviewWork,
+    adminCancelContract,
+    adminUpdateContractAmount,
+    adminCompleteContract
 } = require('../Controllers/contractController');
 const authentic = require('../middleware/authenticationMiddle');
 const optionalAuth = require('../middleware/optionalAuth');
@@ -282,5 +285,92 @@ router.post('/:contractId/submit-work', authentic, submitWork);
  *         description: Work reviewed successfully
  */
 router.patch('/:contractId/review/:deliverableId', authentic, reviewWork);
+
+/**
+ * @swagger
+ * /Freelancing/api/v1/contracts/{id}/admin/cancel:
+ *   patch:
+ *     summary: Admin cancel contract and refund to client
+ *     tags: [Contracts - Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Contract cancelled and payment refunded
+ */
+router.patch('/:id/admin/cancel', authentic, adminCancelContract);
+
+/**
+ * @swagger
+ * /Freelancing/api/v1/contracts/{id}/admin/update-amount:
+ *   patch:
+ *     summary: Admin update contract amount
+ *     tags: [Contracts - Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               newAmount:
+ *                 type: number
+ *               reason:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Contract amount updated successfully
+ */
+router.patch('/:id/admin/update-amount', authentic, adminUpdateContractAmount);
+
+/**
+ * @swagger
+ * /Freelancing/api/v1/contracts/{id}/admin/complete:
+ *   patch:
+ *     summary: Admin force complete contract and release payment
+ *     tags: [Contracts - Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Contract completed and payment released
+ */
+router.patch('/:id/admin/complete', authentic, adminCompleteContract);
 
 module.exports = router;

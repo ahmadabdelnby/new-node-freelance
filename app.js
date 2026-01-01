@@ -41,6 +41,9 @@ const messageRoute = require('./Routes/MessageRoute');
 const convRoute = require('./Routes/ConversationRoute');
 const jobInvitationRoute = require('./Routes/jobInvitationRoute');
 const contractModificationRoute = require('./Routes/contractModificationRoute');
+const contactRoute = require('./Routes/contactRoute');
+const platformSettingsRoute = require('./Routes/platformSettingsRoute');
+const activityLogRoute = require('./Routes/activityLogRoute');
 
 const path = require('path');
 const fs = require('fs');
@@ -178,9 +181,12 @@ app.use('/Freelancing/api/v1/statistics', statisticsRoute);
 app.use('/Freelancing/api/v1/funds', fundsRoute);
 app.use('/Freelancing/api/v1/messages', messageRoute);
 app.use('/Freelancing/api/v1/getconversations', convRoute);
+app.use('/Freelancing/api/v1/contacts', contactRoute);
 app.use('/Freelancing/api/v1/job-invitations', jobInvitationRoute);
 app.use('/Freelancing/api/v1/contract-modifications', contractModificationRoute);
 app.use('/Freelancing/api/v1/cleanup', require('./Routes/cleanupRoute'));
+app.use('/Freelancing/api/v1/platform-settings', platformSettingsRoute);
+app.use('/Freelancing/api/v1/activity-logs', activityLogRoute);
 
 //mongoose connection
 mongoose

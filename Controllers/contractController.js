@@ -757,6 +757,320 @@ const reviewWork = async (req, res) => {
     }
 };
 /****************************************************************************************************/
+// Admin: Cancel contract and refund to client
+const adminCancelContract = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { reason } = req.body;
+        const adminId = req.user.id;
+
+        // Check if admin
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ message: 'Only admins can perform this action' });
+        }
+
+        const Contract = await contract.findById(id)
+            .populate('client', 'first_name last_name email balance')
+            .populate('freelancer', 'first_name last_name email');
+
+        if (!Contract) {
+            return res.status(404).json({ message: 'Contract not found' });
+        }
+
+        if (Contract.status === 'completed') {
+            return res.status(400).json({ message: 'Cannot cancel a completed contract' });
+        }
+
+        if (Contract.status === 'terminated') {
+            return res.status(400).json({ message: 'Contract is already terminated' });
+        }
+
+        console.log('🚫 Admin cancelling contract:', id);
+
+        // Find and refund escrow payment to client
+        const Payment = require('../Models/Payment');
+        const User = require('../Models/User');
+        
+        const escrowPayment = await Payment.findOne({
+            contract: Contract._id,
+            status: 'held',
+            isEscrow: true
+        });
+
+        let refundAmount = 0;
+
+        if (escrowPayment) {
+            refundAmount = escrowPayment.amount;
+            console.log(`💰 Refunding $${refundAmount} to client`);
+
+            // Refund to client balance
+            await User.updateOne(
+                { _id: Contract.client._id },
+                { $inc: { balance: refundAmount } }
+            );
+
+            // Update payment status
+            escrowPayment.status = 'refunded';
+            escrowPayment.refundedAt = new Date();
+            escrowPayment.refundReason = reason || 'Admin cancelled contract';
+            await escrowPayment.save();
+
+            console.log('✅ Payment refunded to client');
+        }
+
+        // Update contract status
+        Contract.status = 'terminated';
+        Contract.terminatedAt = new Date();
+        Contract.terminationReason = reason || 'Cancelled by admin';
+        Contract.terminatedBy = adminId;
+        await Contract.save();
+
+        // Update job status back to open
+        const Job = require('../Models/Jobs');
+        await Job.findByIdAndUpdate(Contract.job, { status: 'open' });
+
+        // Send notifications
+        const Notification = require('../Models/notification');
+        
+        // Notify client
+        await Notification.create({
+            user: Contract.client._id,
+            type: 'contract_cancelled',
+            content: `Your contract has been cancelled by admin. ${refundAmount > 0 ? `$${refundAmount} has been refunded to your balance.` : ''}`,
+            linkUrl: `/contracts/${Contract._id}`
+        });
+
+        // Notify freelancer
+        await Notification.create({
+            user: Contract.freelancer._id,
+            type: 'contract_cancelled',
+            content: `Contract cancelled by admin. Reason: ${reason || 'No reason provided'}`,
+            linkUrl: `/contracts/${Contract._id}`
+        });
+
+        res.status(200).json({
+            message: 'Contract cancelled and payment refunded successfully',
+            contract: Contract,
+            refundAmount
+        });
+
+    } catch (error) {
+        console.error('❌ Error cancelling contract:', error);
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+/****************************************************************************************************/
+// Admin: Update contract amount (for disputes)
+const adminUpdateContractAmount = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { newAmount, reason } = req.body;
+
+        // Check if admin
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ message: 'Only admins can perform this action' });
+        }
+
+        if (!newAmount || newAmount <= 0) {
+            return res.status(400).json({ message: 'Invalid amount' });
+        }
+
+        const Contract = await contract.findById(id)
+            .populate('client', 'first_name last_name email balance')
+            .populate('freelancer', 'first_name last_name email');
+
+        if (!Contract) {
+            return res.status(404).json({ message: 'Contract not found' });
+        }
+
+        if (Contract.status === 'completed') {
+            return res.status(400).json({ message: 'Cannot modify a completed contract' });
+        }
+
+        if (Contract.status === 'terminated') {
+            return res.status(400).json({ message: 'Cannot modify a terminated contract' });
+        }
+
+        const oldAmount = Contract.agreedAmount;
+        const amountDifference = newAmount - oldAmount;
+
+        console.log(`💱 Admin updating contract amount: $${oldAmount} → $${newAmount} (diff: $${amountDifference})`);
+
+        // Update escrow payment if exists
+        const Payment = require('../Models/Payment');
+        const User = require('../Models/User');
+
+        const escrowPayment = await Payment.findOne({
+            contract: Contract._id,
+            status: 'held',
+            isEscrow: true
+        });
+
+        if (escrowPayment) {
+            // If reducing amount, refund difference to client
+            if (amountDifference < 0) {
+                const refundAmount = Math.abs(amountDifference);
+                await User.updateOne(
+                    { _id: Contract.client._id },
+                    { $inc: { balance: refundAmount } }
+                );
+                console.log(`💰 Refunded $${refundAmount} to client (amount reduced)`);
+            }
+            // If increasing amount, the client needs to add more funds - just update escrow for now
+            
+            // Update escrow payment amount
+            escrowPayment.amount = newAmount;
+            escrowPayment.platformFee = newAmount * 0.10; // 10% platform fee
+            escrowPayment.notes = (escrowPayment.notes || '') + `\n[Admin] Amount changed from $${oldAmount} to $${newAmount}. Reason: ${reason || 'No reason'}`;
+            await escrowPayment.save();
+        }
+
+        // Update contract
+        Contract.agreedAmount = newAmount;
+        Contract.amountHistory = Contract.amountHistory || [];
+        Contract.amountHistory.push({
+            oldAmount,
+            newAmount,
+            changedAt: new Date(),
+            changedBy: req.user.id,
+            reason: reason || 'Admin adjustment'
+        });
+        await Contract.save();
+
+        // Send notifications
+        const Notification = require('../Models/notification');
+        
+        await Notification.create({
+            user: Contract.client._id,
+            type: 'contract_updated',
+            content: `Contract amount updated from $${oldAmount} to $${newAmount} by admin. ${amountDifference < 0 ? `$${Math.abs(amountDifference)} refunded to your balance.` : ''}`,
+            linkUrl: `/contracts/${Contract._id}`
+        });
+
+        await Notification.create({
+            user: Contract.freelancer._id,
+            type: 'contract_updated',
+            content: `Contract amount updated from $${oldAmount} to $${newAmount} by admin.`,
+            linkUrl: `/contracts/${Contract._id}`
+        });
+
+        res.status(200).json({
+            message: 'Contract amount updated successfully',
+            contract: Contract,
+            oldAmount,
+            newAmount,
+            amountDifference
+        });
+
+    } catch (error) {
+        console.error('❌ Error updating contract amount:', error);
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+/****************************************************************************************************/
+// Admin: Force complete contract and release payment
+const adminCompleteContract = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { reason } = req.body;
+
+        // Check if admin
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ message: 'Only admins can perform this action' });
+        }
+
+        const Contract = await contract.findById(id)
+            .populate('client', 'first_name last_name email')
+            .populate('freelancer', 'first_name last_name email');
+
+        if (!Contract) {
+            return res.status(404).json({ message: 'Contract not found' });
+        }
+
+        if (Contract.status === 'completed') {
+            return res.status(400).json({ message: 'Contract already completed' });
+        }
+
+        if (Contract.status === 'terminated') {
+            return res.status(400).json({ message: 'Cannot complete a terminated contract' });
+        }
+
+        console.log('✅ Admin completing contract:', id);
+
+        // Use the existing completeContract logic but force it
+        Contract.status = 'completed';
+        Contract.completedAt = new Date();
+        Contract.completedBy = req.user.id;
+        Contract.completionReason = reason || 'Completed by admin';
+        await Contract.save();
+
+        // Update job status
+        const Job = require('../Models/Jobs');
+        await Job.findByIdAndUpdate(Contract.job, { status: 'completed' });
+
+        // Update freelancer stats
+        const User = require('../Models/User');
+        await User.findByIdAndUpdate(Contract.freelancer._id, {
+            $inc: { completedJobs: 1 }
+        });
+
+        // Release escrow payment
+        const Payment = require('../Models/Payment');
+        const escrowPayment = await Payment.findOne({
+            contract: Contract._id,
+            status: 'held',
+            isEscrow: true
+        });
+
+        let releasedAmount = 0;
+
+        if (escrowPayment) {
+            const platformFee = escrowPayment.platformFee || 0;
+            releasedAmount = escrowPayment.amount - platformFee;
+
+            // Add to freelancer balance
+            await User.updateOne(
+                { _id: Contract.freelancer._id },
+                { $inc: { balance: releasedAmount, totalEarnings: releasedAmount } }
+            );
+
+            escrowPayment.status = 'released';
+            escrowPayment.releasedAt = new Date();
+            escrowPayment.transactionId = 'ADM-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9).toUpperCase();
+            await escrowPayment.save();
+
+            console.log(`✅ Released $${releasedAmount} to freelancer`);
+        }
+
+        // Send notifications
+        const Notification = require('../Models/notification');
+        
+        await Notification.create({
+            user: Contract.client._id,
+            type: 'contract_completed',
+            content: `Contract has been completed by admin. ${reason ? `Reason: ${reason}` : ''}`,
+            linkUrl: `/contracts/${Contract._id}`
+        });
+
+        await Notification.create({
+            user: Contract.freelancer._id,
+            type: 'contract_completed',
+            content: `Contract completed by admin! $${releasedAmount} has been added to your balance.`,
+            linkUrl: `/contracts/${Contract._id}`
+        });
+
+        res.status(200).json({
+            message: 'Contract completed and payment released successfully',
+            contract: Contract,
+            releasedAmount
+        });
+
+    } catch (error) {
+        console.error('❌ Error completing contract:', error);
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+/****************************************************************************************************/
 module.exports = {
     createContract,
     getMyContracts,
@@ -767,5 +1081,8 @@ module.exports = {
     completeContract,
     updateHoursWorked,
     submitWork,
-    reviewWork
+    reviewWork,
+    adminCancelContract,
+    adminUpdateContractAmount,
+    adminCompleteContract
 };
