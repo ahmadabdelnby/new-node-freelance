@@ -1,6 +1,69 @@
 const { Message, Conversation } = require('../Models/Chat');
 const mongoose = require('mongoose');
 const { getIO } = require('../services/socketService');
+const User = require('../Models/User');
+
+// Helper function to calculate and update response time
+const calculateAndUpdateResponseTime = async (conversationId, responderId) => {
+    try {
+        console.log(`📊 [RESPONSE_TIME] Calculating for conversation ${conversationId}, responder ${responderId}`);
+
+        // Get the last 2 messages in this conversation
+        const recentMessages = await Message.find({ conversation: conversationId })
+            .sort({ createdAt: -1 })
+            .limit(2);
+
+        console.log(`📊 [RESPONSE_TIME] Found ${recentMessages.length} messages`);
+
+        if (recentMessages.length < 2) {
+            console.log(`📊 [RESPONSE_TIME] Not enough messages to calculate response time`);
+            return;
+        }
+
+        const currentMessage = recentMessages[0]; // Most recent (the reply)
+        const previousMessage = recentMessages[1]; // The message being replied to
+
+        console.log(`📊 [RESPONSE_TIME] Current msg sender: ${currentMessage.sender}, Previous msg sender: ${previousMessage.sender}`);
+
+        // Only calculate if the previous message was from a different user
+        if (previousMessage.sender.toString() === currentMessage.sender.toString()) {
+            console.log(`📊 [RESPONSE_TIME] Same sender, skipping`);
+            return;
+        }
+
+        // Calculate time difference in minutes
+        const timeDiff = currentMessage.createdAt - previousMessage.createdAt;
+        const responseTimeMinutes = Math.round(timeDiff / (1000 * 60));
+
+        console.log(`📊 [RESPONSE_TIME] Response time: ${responseTimeMinutes} minutes`);
+
+        // Only count responses between 1 minute and 24 hours (1440 minutes)
+        if (responseTimeMinutes < 1 || responseTimeMinutes > 1440) {
+            console.log(`📊 [RESPONSE_TIME] Time out of range (must be 1-1440 mins)`);
+            return;
+        }
+
+        // Update user's response time with weighted average
+        const user = await User.findById(responderId);
+        if (user) {
+            const currentCount = user.responseTimeCount || 0;
+            const currentAvg = user.responseTime || responseTimeMinutes;
+
+            // Calculate new weighted average
+            const newCount = currentCount + 1;
+            const newAvg = Math.round(((currentAvg * currentCount) + responseTimeMinutes) / newCount);
+
+            await User.findByIdAndUpdate(responderId, {
+                responseTime: newAvg,
+                responseTimeCount: newCount
+            });
+
+            console.log(`📊 [RESPONSE_TIME] ✅ Updated user ${responderId}: avg=${newAvg} mins, count=${newCount}`);
+        }
+    } catch (error) {
+        console.error('📊 [RESPONSE_TIME] Error:', error);
+    }
+};
 
 // Create or get conversation
 const createOrGetConversation = async (req, res) => {
@@ -249,6 +312,9 @@ const sendMessage = async (req, res) => {
         conversation.lastMessage = message._id;
         conversation.lastMessageAt = new Date();
         await conversation.save();
+
+        // Calculate response time for the sender
+        await calculateAndUpdateResponseTime(conversationId, senderId);
 
         await message.populate('sender', 'first_name last_name profile_picture profile_picture_url');
 

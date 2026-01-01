@@ -19,6 +19,20 @@ const reviewSchema = new Schema(
       maxlength: [500, "Comment cannot exceed 500 characters"],
       trim: true,
     },
+    // Freelancer's reply to the review
+    freelancerReply: {
+      content: {
+        type: String,
+        maxlength: [500, "Reply cannot exceed 500 characters"],
+        trim: true,
+      },
+      createdAt: {
+        type: Date,
+      },
+      updatedAt: {
+        type: Date,
+      },
+    },
   },
   { timestamps: true }
 );

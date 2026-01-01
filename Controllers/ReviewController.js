@@ -287,6 +287,164 @@ const deleteReviewById = async (req, res) => {
   }
 };
 
+// Add freelancer reply to a review
+const addFreelancerReply = async (req, res) => {
+  try {
+    const reviewId = req.params.id;
+    const { content } = req.body;
+    const userId = req.user?._id || req.user?.id;
+
+    // Validate content
+    if (!content || content.trim().length === 0) {
+      return res.status(400).json({ message: "Reply content is required" });
+    }
+
+    if (content.length > 500) {
+      return res.status(400).json({ message: "Reply cannot exceed 500 characters" });
+    }
+
+    // Find the review
+    const review = await Review.findById(reviewId);
+    if (!review) {
+      return res.status(404).json({ message: "Review not found" });
+    }
+
+    // Verify that the current user is the reviewee (the freelancer who received the review)
+    if (String(review.reviewee) !== String(userId)) {
+      return res.status(403).json({
+        message: "Only the person who received this review can reply to it"
+      });
+    }
+
+    // Check if reply already exists
+    if (review.freelancerReply?.content) {
+      return res.status(400).json({
+        message: "You have already replied to this review. You can edit your existing reply."
+      });
+    }
+
+    // Add the reply
+    review.freelancerReply = {
+      content: content.trim(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    await review.save();
+
+    // Populate and return the updated review
+    const updatedReview = await Review.findById(reviewId)
+      .populate("reviewer", "username email first_name last_name profile_picture_url")
+      .populate("reviewee", "username email first_name last_name profile_picture_url")
+      .populate("contract");
+
+    console.log(`💬 Freelancer reply added to review ${reviewId}`);
+
+    res.json({
+      message: "Reply added successfully",
+      review: updatedReview,
+    });
+  } catch (error) {
+    console.error("Error adding freelancer reply:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// Update freelancer reply
+const updateFreelancerReply = async (req, res) => {
+  try {
+    const reviewId = req.params.id;
+    const { content } = req.body;
+    const userId = req.user?._id || req.user?.id;
+
+    // Validate content
+    if (!content || content.trim().length === 0) {
+      return res.status(400).json({ message: "Reply content is required" });
+    }
+
+    if (content.length > 500) {
+      return res.status(400).json({ message: "Reply cannot exceed 500 characters" });
+    }
+
+    // Find the review
+    const review = await Review.findById(reviewId);
+    if (!review) {
+      return res.status(404).json({ message: "Review not found" });
+    }
+
+    // Verify that the current user is the reviewee
+    if (String(review.reviewee) !== String(userId)) {
+      return res.status(403).json({
+        message: "Only the person who received this review can edit the reply"
+      });
+    }
+
+    // Check if reply exists
+    if (!review.freelancerReply?.content) {
+      return res.status(400).json({ message: "No reply exists to update" });
+    }
+
+    // Update the reply
+    review.freelancerReply.content = content.trim();
+    review.freelancerReply.updatedAt = new Date();
+
+    await review.save();
+
+    // Populate and return the updated review
+    const updatedReview = await Review.findById(reviewId)
+      .populate("reviewer", "username email first_name last_name profile_picture_url")
+      .populate("reviewee", "username email first_name last_name profile_picture_url")
+      .populate("contract");
+
+    console.log(`✏️ Freelancer reply updated for review ${reviewId}`);
+
+    res.json({
+      message: "Reply updated successfully",
+      review: updatedReview,
+    });
+  } catch (error) {
+    console.error("Error updating freelancer reply:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// Delete freelancer reply
+const deleteFreelancerReply = async (req, res) => {
+  try {
+    const reviewId = req.params.id;
+    const userId = req.user?._id || req.user?.id;
+
+    // Find the review
+    const review = await Review.findById(reviewId);
+    if (!review) {
+      return res.status(404).json({ message: "Review not found" });
+    }
+
+    // Verify that the current user is the reviewee
+    if (String(review.reviewee) !== String(userId)) {
+      return res.status(403).json({
+        message: "Only the person who received this review can delete the reply"
+      });
+    }
+
+    // Check if reply exists
+    if (!review.freelancerReply?.content) {
+      return res.status(400).json({ message: "No reply exists to delete" });
+    }
+
+    // Delete the reply
+    review.freelancerReply = undefined;
+    await review.save();
+
+    console.log(`🗑️ Freelancer reply deleted for review ${reviewId}`);
+
+    res.json({ message: "Reply deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting freelancer reply:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
 module.exports = {
   createReview,
   getAllReviews,
@@ -296,4 +454,7 @@ module.exports = {
   getReviewsByContract,
   updateReviewById,
   deleteReviewById,
+  addFreelancerReply,
+  updateFreelancerReply,
+  deleteFreelancerReply,
 };

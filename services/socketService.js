@@ -1,8 +1,91 @@
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const { Message, Conversation } = require('../Models/Chat');
+const User = require('../Models/User');
 
 let io;
+
+/**
+ * Calculate and update average response time for a user
+ * Response time = time between receiving a message and sending a reply
+ * @param {String} conversationId - The conversation ID
+ * @param {String} responderId - The user who is responding
+ */
+const calculateAndUpdateResponseTime = async (conversationId, responderId) => {
+    try {
+        console.log(`📊 [RESPONSE_TIME] Calculating for conversation ${conversationId}, responder ${responderId}`);
+
+        // Get last 2 messages in this conversation
+        const recentMessages = await Message.find({
+            conversation: conversationId,
+            isDeleted: { $ne: true }
+        })
+            .sort({ createdAt: -1 })
+            .limit(2)
+            .lean();
+
+        console.log(`📊 [RESPONSE_TIME] Found ${recentMessages.length} messages`);
+
+        // Need at least 2 messages (the current reply and the previous message)
+        if (recentMessages.length < 2) {
+            console.log(`📊 [RESPONSE_TIME] Not enough messages, skipping`);
+            return;
+        }
+
+        const currentMessage = recentMessages[0]; // The reply just sent
+        const previousMessage = recentMessages[1]; // The message being replied to
+
+        console.log(`📊 [RESPONSE_TIME] Current msg sender: ${currentMessage.sender}, Previous msg sender: ${previousMessage.sender}`);
+
+        // Check if this is actually a response (previous message from different user)
+        if (previousMessage.sender.toString() === responderId) {
+            // Same person sent both messages, not a response
+            console.log(`📊 [RESPONSE_TIME] Same sender, not a response, skipping`);
+            return;
+        }
+
+        // Calculate response time in minutes
+        const previousTime = new Date(previousMessage.createdAt);
+        const currentTime = new Date(currentMessage.createdAt);
+        const responseTimeMinutes = Math.round((currentTime - previousTime) / (1000 * 60));
+
+        console.log(`📊 [RESPONSE_TIME] Response time: ${responseTimeMinutes} minutes`);
+
+        // Only count reasonable response times (between 1 minute and 24 hours)
+        if (responseTimeMinutes < 1 || responseTimeMinutes > 1440) {
+            console.log(`📊 [RESPONSE_TIME] Time out of range (${responseTimeMinutes}), skipping`);
+            return;
+        }
+
+        // Get current user's response time data
+        const user = await User.findById(responderId).select('responseTime responseTimeCount');
+
+        if (!user) {
+            console.log(`📊 [RESPONSE_TIME] User not found`);
+            return;
+        }
+
+        // Calculate new average response time
+        const currentAvg = user.responseTime || 0;
+        const count = user.responseTimeCount || 0;
+
+        // Weighted average: ((currentAvg * count) + newValue) / (count + 1)
+        const newAvg = count === 0
+            ? responseTimeMinutes
+            : Math.round(((currentAvg * count) + responseTimeMinutes) / (count + 1));
+
+        // Update user's response time
+        await User.findByIdAndUpdate(responderId, {
+            responseTime: newAvg,
+            responseTimeCount: count + 1
+        });
+
+        console.log(`📊 [RESPONSE_TIME] ✅ Updated for user ${responderId}: ${newAvg} min (from ${count + 1} responses)`);
+
+    } catch (error) {
+        console.error('Error calculating response time:', error);
+    }
+};
 
 const initializeSocket = (server) => {
     io = new Server(server, {
@@ -32,11 +115,22 @@ const initializeSocket = (server) => {
         }
     });
 
-    io.on('connection', (socket) => {
+    io.on('connection', async (socket) => {
         console.log(`User connected: ${socket.userId}`);
 
         // Join user's personal room
         socket.join(`user:${socket.userId}`);
+
+        // Update user's online status in database
+        try {
+            const User = require('../Models/User');
+            await User.findByIdAndUpdate(socket.userId, {
+                isOnline: true,
+                lastSeen: new Date()
+            });
+        } catch (error) {
+            console.error('Error updating online status on connect:', error);
+        }
 
         // Notify all users that this user is online
         socket.broadcast.emit('user_online', { userId: socket.userId });
@@ -137,6 +231,9 @@ const initializeSocket = (server) => {
                 conversation.lastMessage = message._id;
                 conversation.lastMessageAt = new Date();
                 await conversation.save();
+
+                // Calculate response time for the sender AFTER message is saved
+                await calculateAndUpdateResponseTime(conversationId, socket.userId);
 
                 await message.populate('sender', 'first_name last_name profile_picture profile_picture_url');
 

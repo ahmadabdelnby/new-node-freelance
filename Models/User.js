@@ -189,8 +189,13 @@ const userSchema = new mongoose.Schema({
         min: 0
     },
     responseTime: {
-        type: Number, // in hours
+        type: Number, // in minutes (average response time)
         default: null,
+        min: 0
+    },
+    responseTimeCount: {
+        type: Number, // number of responses used to calculate average
+        default: 0,
         min: 0
     },
     // Social links

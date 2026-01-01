@@ -9,7 +9,7 @@ const notificationSchema = new Schema({
             // Messages
             'new_message', 'unread_messages',
             // Jobs
-            'job_posted', 'job_closed', 'job_expired', 'job_updated',
+            'job_posted', 'job_closed', 'job_expired', 'job_updated', 'job_invitation',
             // Proposals
             'new_proposal', 'proposal_accepted', 'proposal_rejected', 'proposal_shortlisted',
             // Contracts

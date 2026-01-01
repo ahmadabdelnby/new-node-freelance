@@ -837,33 +837,81 @@ const rejectProposal = async (req, res) => {
     proposal.respondedAt = new Date();
     await proposal.save();
 
-    // 🔥 SEND NOTIFICATION
+    // 🔥 SEND NOTIFICATION & EMAIL
     try {
       const Notification = require('../Models/notification');
       const { getIO } = require('../services/socketService');
+      const { sendEmail } = require('../services/emailService');
+      const User = require('../Models/User');
 
       await Notification.create({
         user: proposal.freelancer_id,
         type: 'proposal_rejected',
-        content: `Your proposal for "${job.title}" was not selected by the client`,
+        content: `Your proposal for "${job.title}" was rejected by the client`,
         linkUrl: `/jobs/${job._id}`,
         category: 'proposal',
         relatedJob: job._id,
         relatedProposal: proposal._id
       });
 
+      // Send email to freelancer
+      const freelancer = await User.findById(proposal.freelancer_id);
+      if (freelancer && freelancer.email) {
+        await sendEmail(
+          freelancer.email,
+          `Proposal Rejected for "${job.title}"`,
+          {
+            subject: `Proposal Update for "${job.title}"`,
+            html: `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9f9f9; padding: 30px; border-radius: 10px;">
+                <div style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; padding: 30px; text-align: center; border-radius: 10px;">
+                  <h1>Proposal Rejected</h1>
+                </div>
+                <div style="padding: 30px; background: white; margin-top: 20px; border-radius: 10px;">
+                  <h2>Hi ${freelancer.fullName || 'there'},</h2>
+                  <p>Unfortunately, your proposal for "<strong>${job.title}</strong>" has been rejected by the client.</p>
+                  <div style="background: #f8d7da; border-left: 4px solid #dc3545; padding: 20px; margin: 20px 0;">
+                    <p style="margin: 0;"><strong>Proposal Status: Rejected</strong></p>
+                    <p style="margin: 5px 0 0 0;">The client has decided not to proceed with your proposal.</p>
+                  </div>
+                  <div style="background: #d1ecf1; border-left: 4px solid #17a2b8; padding: 15px; margin: 20px 0;">
+                    <p style="margin: 0;"><strong>💡 Keep Going!</strong></p>
+                    <p style="margin: 5px 0 0 0;">Don't be discouraged. There are many other opportunities waiting for you!</p>
+                  </div>
+                  <p><strong>Tips for Better Success:</strong></p>
+                  <ul>
+                    <li>Tailor your proposals to each specific job</li>
+                    <li>Highlight relevant experience and portfolio</li>
+                    <li>Provide competitive and realistic pricing</li>
+                    <li>Respond quickly to new job postings</li>
+                  </ul>
+                  <div style="text-align: center; margin-top: 30px;">
+                    <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/jobs" style="display: inline-block; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px;">Browse More Jobs</a>
+                  </div>
+                </div>
+              </div>
+            `
+          }
+        );
+      }
+
       const io = getIO();
       if (io) {
+        // Populate proposal for real-time update
+        const populatedProposal = await Proposal.findById(proposal._id).populate('freelancer_id', 'fullName email');
+
         io.to(`user:${proposal.freelancer_id}`).emit('proposal_rejected', {
           jobId: job._id,
           jobTitle: job.title,
-          proposalId: proposal._id
+          proposalId: proposal._id,
+          freelancerId: proposal.freelancer_id,
+          proposal: populatedProposal
         });
       }
 
-      console.log('✅ Proposal rejection notification sent');
+      console.log('✅ Proposal rejection notification and email sent');
     } catch (notifError) {
-      console.error('⚠️ Failed to send notification:', notifError.message);
+      console.error('⚠️ Failed to send notification/email:', notifError.message);
     }
 
     res.status(200).json({

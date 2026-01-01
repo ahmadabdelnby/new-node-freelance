@@ -9,6 +9,9 @@ const {
   getReviewsByContract,
   updateReviewById,
   deleteReviewById,
+  addFreelancerReply,
+  updateFreelancerReply,
+  deleteFreelancerReply,
 } = require("../Controllers/ReviewController");
 const authentic = require('../middleware/authenticationMiddle');
 
@@ -222,5 +225,118 @@ router.put("/:id", authentic, updateReviewById);
  *         description: Server error
  */
 router.delete("/:id", authentic, deleteReviewById);
+
+/**
+ * @swagger
+ * /Freelancing/api/v1/reviews/{id}/reply:
+ *   post:
+ *     summary: Add a reply to a review (only for the reviewee/freelancer)
+ *     tags: [Reviews]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Review ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - content
+ *             properties:
+ *               content:
+ *                 type: string
+ *                 maxLength: 500
+ *                 description: Reply content
+ *     responses:
+ *       200:
+ *         description: Reply added successfully
+ *       400:
+ *         description: Validation error or reply already exists
+ *       403:
+ *         description: Not authorized to reply
+ *       404:
+ *         description: Review not found
+ *       500:
+ *         description: Server error
+ */
+router.post("/:id/reply", authentic, addFreelancerReply);
+
+/**
+ * @swagger
+ * /Freelancing/api/v1/reviews/{id}/reply:
+ *   put:
+ *     summary: Update a reply to a review
+ *     tags: [Reviews]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Review ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - content
+ *             properties:
+ *               content:
+ *                 type: string
+ *                 maxLength: 500
+ *                 description: Updated reply content
+ *     responses:
+ *       200:
+ *         description: Reply updated successfully
+ *       400:
+ *         description: Validation error or no reply exists
+ *       403:
+ *         description: Not authorized to update reply
+ *       404:
+ *         description: Review not found
+ *       500:
+ *         description: Server error
+ */
+router.put("/:id/reply", authentic, updateFreelancerReply);
+
+/**
+ * @swagger
+ * /Freelancing/api/v1/reviews/{id}/reply:
+ *   delete:
+ *     summary: Delete a reply from a review
+ *     tags: [Reviews]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Review ID
+ *     responses:
+ *       200:
+ *         description: Reply deleted successfully
+ *       400:
+ *         description: No reply exists to delete
+ *       403:
+ *         description: Not authorized to delete reply
+ *       404:
+ *         description: Review not found
+ *       500:
+ *         description: Server error
+ */
+router.delete("/:id/reply", authentic, deleteFreelancerReply);
 
 module.exports = router;

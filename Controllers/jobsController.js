@@ -764,6 +764,10 @@ const incrementJobViews = async (req, res) => {
         // Ensure we can access optional authenticated user (route uses optionalAuth)
         const userId = req.user ? req.user.id || req.user._id : null;
 
+        // Extract IP and user agent for guest tracking
+        const clientIP = req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+        const userAgent = req.headers['user-agent'] || '';
+
         // Find job
         const jobDoc = await job.findById(jobId).select('views client viewedBy title');
         if (!jobDoc) {
@@ -775,12 +779,23 @@ const incrementJobViews = async (req, res) => {
             return res.json({ message: 'Owner view ignored', views: jobDoc.views });
         }
 
-        // If authenticated user: only count once using viewedBy
+        // Import ViewLog model
+        const ViewLog = require('../Models/ViewLog');
+
+        // If authenticated user: only count once using viewedBy + ViewLog
         if (userId) {
             const alreadyViewed = (Array.isArray(jobDoc.viewedBy) && jobDoc.viewedBy.some(v => String(v) === String(userId)));
             if (alreadyViewed) {
                 return res.json({ message: 'Already counted', views: jobDoc.views });
             }
+
+            // Create view log for authenticated user
+            await ViewLog.create({
+                job: jobId,
+                user: userId,
+                ip: clientIP,
+                userAgent: userAgent
+            }).catch(() => { }); // Ignore duplicate errors
 
             // Add user to viewedBy and increment views atomically
             const updatedJob = await job.findByIdAndUpdate(
@@ -788,6 +803,8 @@ const incrementJobViews = async (req, res) => {
                 { $addToSet: { viewedBy: userId }, $inc: { views: 1 } },
                 { new: true }
             ).select('views');
+
+            console.log(`✅ View counted for authenticated user ${userId} -> Job ${jobId} -> views=${updatedJob.views}`);
 
             // Emit socket event so clients can update in real time
             try {
@@ -802,13 +819,33 @@ const incrementJobViews = async (req, res) => {
             return res.json({ message: 'View count updated', views: updatedJob.views });
         }
 
-        // For unauthenticated users we rely on the client to avoid double-calling (e.g., localStorage).
-        // Here we simply increment each request. Client should only call once per browser session.
+        // 🔥 For unauthenticated users: IP-based deduplication (24-hour window)
+        const recentView = await ViewLog.findOne({
+            job: jobId,
+            ip: clientIP,
+            createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+        });
+
+        if (recentView) {
+            console.log(`⚠️ Guest view already counted from IP ${clientIP} -> Job ${jobId}`);
+            return res.json({ message: 'Already counted', views: jobDoc.views });
+        }
+
+        // Create view log for guest user
+        await ViewLog.create({
+            job: jobId,
+            ip: clientIP,
+            userAgent: userAgent
+        }).catch(() => { }); // Ignore errors
+
+        // Increment views for guest
         const updatedJob = await job.findByIdAndUpdate(
             jobId,
             { $inc: { views: 1 } },
             { new: true }
         ).select('views');
+
+        console.log(`✅ View counted for guest IP ${clientIP} -> Job ${jobId} -> views=${updatedJob.views}`);
 
         // Emit socket event
         try {
