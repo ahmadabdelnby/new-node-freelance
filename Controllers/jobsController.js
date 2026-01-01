@@ -203,7 +203,6 @@ const recommendFreelancers = async (req, res) => {
     try {
         console.log('🎯 recommendFreelancers called');
         console.log('Request params:', req.params);
-        console.log('Request user:', req.user);
 
         const jobId = req.params.jobId;
 
@@ -223,59 +222,145 @@ const recommendFreelancers = async (req, res) => {
         console.log('✅ Job found:', currentJob.title);
         console.log('Job has embedding:', !!currentJob.embedding);
 
-        if (!currentJob.embedding) {
-            console.log('❌ Job missing embedding');
-            return res.status(404).json({ message: 'Job not found or missing embedding' });
+        if (!currentJob.embedding || currentJob.embedding.length === 0) {
+            console.log('❌ Job missing embedding, generating now...');
+            // Try to generate embedding for this job
+            try {
+                const OpenAI = require('openai');
+                const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+                const textForEmbedding = `${currentJob.title} ${currentJob.description}`;
+                const embeddingResponse = await openai.embeddings.create({
+                    model: 'text-embedding-3-large',
+                    input: textForEmbedding,
+                });
+                currentJob.embedding = embeddingResponse.data[0].embedding;
+                await currentJob.save();
+                console.log('✅ Embedding generated for current job');
+            } catch (embError) {
+                console.error('❌ Failed to generate embedding:', embError.message);
+                return res.status(400).json({ message: 'Job missing embedding and failed to generate' });
+            }
         }
 
-        console.log('🔍 Finding past jobs...');
-        // Find past jobs that were completed and rated
+        // Import Contract and Review models
+        const Contract = require('../Models/Contract');
+        const Review = require('../Models/review.model');
+
+        // Find all completed contracts with their freelancers
+        console.log('🔍 Finding completed contracts...');
+        const completedContracts = await Contract.find({
+            status: 'completed'
+        }).populate('job freelancer');
+
+        console.log('📊 Completed contracts found:', completedContracts.length);
+
+        // Get jobs from completed contracts that have embeddings
+        const jobIdsFromContracts = completedContracts
+            .filter(c => c.job && c.job._id.toString() !== jobId)
+            .map(c => c.job._id);
+
         const pastJobs = await job.find({
-            _id: { $ne: currentJob._id },
-            freelancer: { $ne: null },
-            'rating.score': { $exists: true },
-            embedding: { $exists: true }
+            _id: { $in: jobIdsFromContracts },
+            embedding: { $exists: true, $ne: [] }
         });
 
-        console.log('📊 Past jobs found:', pastJobs.length);
+        console.log('📊 Past jobs with embeddings found:', pastJobs.length);
+
+        // Create a map of job to freelancer and their ratings
+        const jobFreelancerMap = {};
+        for (const contract of completedContracts) {
+            if (contract.job && contract.freelancer) {
+                jobFreelancerMap[contract.job._id.toString()] = {
+                    freelancerId: contract.freelancer._id.toString(),
+                    freelancer: contract.freelancer
+                };
+            }
+        }
+
+        // Get reviews for all freelancers to calculate their ratings
+        const freelancerIds = [...new Set(Object.values(jobFreelancerMap).map(f => f.freelancerId))];
+        const reviews = await Review.find({
+            reviewee: { $in: freelancerIds }
+        });
+
+        // Calculate average rating per freelancer
+        const freelancerRatings = {};
+        for (const review of reviews) {
+            const fId = review.reviewee.toString();
+            if (!freelancerRatings[fId]) {
+                freelancerRatings[fId] = { total: 0, count: 0 };
+            }
+            freelancerRatings[fId].total += review.rating;
+            freelancerRatings[fId].count += 1;
+        }
+
+        console.log('📊 Freelancer ratings calculated:', Object.keys(freelancerRatings).length);
 
         const freelancerScores = {};
 
         for (const pastJob of pastJobs) {
+            const jobMapping = jobFreelancerMap[pastJob._id.toString()];
+            if (!jobMapping) continue;
+
             const similarity = cosineSimilarity(currentJob.embedding, pastJob.embedding);
-            console.log(`Similarity with job "${pastJob.title}":`, similarity);
+            console.log(`📐 Similarity with job "${pastJob.title.substring(0, 30)}...":`, similarity.toFixed(3));
 
-            if (similarity < 0.6) continue; // skip jobs that are too dissimilar
+            if (similarity < 0.5) continue; // skip jobs that are too dissimilar
 
+            const freelancerId = jobMapping.freelancerId;
+            const ratingData = freelancerRatings[freelancerId];
+            const avgRating = ratingData ? (ratingData.total / ratingData.count) : 3; // default 3 if no ratings
+            
             // Normalize rating to 0-1
-            const ratingScore = pastJob.rating.score / 5;
+            const ratingScore = avgRating / 5;
 
             // Weighted final score: 70% similarity, 30% rating
             const finalScore = 0.7 * similarity + 0.3 * ratingScore;
 
-            const freelancerId = pastJob.freelancer.toString();
-            freelancerScores[freelancerId] = Math.max(freelancerScores[freelancerId] || 0, finalScore);
-            console.log(`Freelancer ${freelancerId} score:`, finalScore);
+            // Keep the highest score for each freelancer
+            if (!freelancerScores[freelancerId] || finalScore > freelancerScores[freelancerId].score) {
+                freelancerScores[freelancerId] = {
+                    score: finalScore,
+                    similarity: similarity,
+                    rating: avgRating,
+                    jobTitle: pastJob.title
+                };
+            }
+            console.log(`👤 Freelancer ${freelancerId} score:`, finalScore.toFixed(3));
         }
 
-        console.log('🏆 Freelancer scores:', freelancerScores);
+        console.log('🏆 Freelancer scores:', Object.keys(freelancerScores).length);
 
         // Get top 5 freelancers
         const topFreelancerIds = Object.entries(freelancerScores)
-            .sort((a, b) => b[1] - a[1])
+            .sort((a, b) => b[1].score - a[1].score)
             .slice(0, 5)
             .map(([id]) => id);
 
         console.log('🎯 Top freelancer IDs:', topFreelancerIds);
 
         const freelancers = await User.find({ _id: { $in: topFreelancerIds } })
-            .select('first_name last_name email profile_picture specialties');
+            .select('first_name last_name email profile_picture profilePicture username freelancerProfile');
 
-        console.log('✅ Freelancers fetched:', freelancers.length);
-        console.log('Freelancers data:', JSON.stringify(freelancers, null, 2));
+        // Add scores to freelancer data
+        const freelancersWithScores = freelancers.map(f => {
+            const scoreData = freelancerScores[f._id.toString()];
+            return {
+                ...f.toObject(),
+                matchScore: scoreData ? (scoreData.score * 100).toFixed(1) : 0,
+                similarity: scoreData ? (scoreData.similarity * 100).toFixed(1) : 0,
+                rating: scoreData ? scoreData.rating.toFixed(1) : 0,
+                matchedJob: scoreData ? scoreData.jobTitle : null
+            };
+        });
 
-        const response = { jobId, recommendedFreelancers: freelancers };
-        console.log('📤 Sending response:', response);
+        // Sort by matchScore
+        freelancersWithScores.sort((a, b) => parseFloat(b.matchScore) - parseFloat(a.matchScore));
+
+        console.log('✅ Freelancers fetched:', freelancersWithScores.length);
+
+        const response = { jobId, recommendedFreelancers: freelancersWithScores };
+        console.log('📤 Sending response with', freelancersWithScores.length, 'recommendations');
 
         res.json(response);
     } catch (error) {
