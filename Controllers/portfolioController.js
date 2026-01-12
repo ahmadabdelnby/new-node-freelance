@@ -71,7 +71,7 @@ const getAllPortfolioItems = async (req, res) => {
         if (featured === 'true') query.isFeatured = true;
 
         const portfolioItems = await PortfolioItem.find(query)
-            .populate('freelancer', 'first_name last_name profile_picture_url')
+            .populate('freelancer', 'first_name last_name email profile_picture_url')
             .populate('skills', 'name')
             .sort({ isFeatured: -1, views: -1, createdAt: -1 });
 

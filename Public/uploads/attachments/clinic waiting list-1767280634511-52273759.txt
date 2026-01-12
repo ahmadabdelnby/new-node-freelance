@@ -1,0 +1,129 @@
+
+<div class="row p-0 m-0">
+
+    <div class="col-sm-1 d-flex flex-column align-items-center justify-content-center">
+        
+
+    </div>
+    <div class="pt-4 col-sm-10">
+        
+        <p class="text-center h1 fw-bold mb-5 mx-1 mx-md-4 mt-4 ">interior</p>
+        <table class="table">
+            <thead class="table-info">
+                <tr>
+                    <th scope="col">Name</th>
+                    <th scope="col">id</th>
+                    <th scope="col">age</th>
+                    <th scope="col">Number</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="table-secondary">
+                    <td>said</td>
+                    <td>12150365465</td>
+                    <td>25</td>
+                    <td>12345</td>
+                </tr>
+                <tr class="table-secondary">
+                    <td>mohamed</td>
+                    <td>45654245</td>
+                    <td>30</td>
+                    <td>67890</td>
+                </tr>
+                <tr class="table-secondary">
+                    <td>john</td>
+                    <td>78965412</td>
+                    <td>35</td>
+                    <td>24680</td>
+                </tr>
+                <tr class="table-secondary">
+                    <td>john</td>
+                    <td>78965412</td>
+                    <td>35</td>
+                    <td>24680</td>
+                </tr>
+            </tbody>
+        </table>
+        <p class="text-center h1 fw-bold mb-5 mx-1 mx-md-4 mt-4">Heart</p>
+        <table class="table">
+            <thead class="table-info">
+                <tr>
+                    <th scope="col">Name</th>
+                    <th scope="col">id</th>
+                    <th scope="col">age</th>
+                    <th scope="col">Number</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="table-secondary">
+                    <td>said</td>
+                    <td>12150365465</td>
+                    <td>25</td>
+                    <td>12345</td>
+                </tr>
+                <tr class="table-secondary">
+                    <td>mohamed</td>
+                    <td>45654245</td>
+                    <td>30</td>
+                    <td>67890</td>
+                </tr>
+                <tr class="table-secondary">
+                    <td>john</td>
+                    <td>78965412</td>
+                    <td>35</td>
+                    <td>24680</td>
+                </tr>
+                <tr class="table-secondary">
+                    <td>john</td>
+                    <td>78965412</td>
+                    <td>35</td>
+                    <td>24680</td>
+                </tr>
+            </tbody>
+        </table>
+        <p class="text-center h1 fw-bold mb-5 mx-1 mx-md-4 mt-4">anything</p>
+        <table class="table">
+            <thead class="table-info">
+                <tr>
+                    <th scope="col">Name</th>
+                    <th scope="col">id</th>
+                    <th scope="col">age</th>
+                    <th scope="col">Number</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="table-secondary">
+                    <td>said</td>
+                    <td>12150365465</td>
+                    <td>25</td>
+                    <td>12345</td>
+                </tr>
+                <tr class="table-secondary">
+                    <td>mohamed</td>
+                    <td>45654245</td>
+                    <td>30</td>
+                    <td>67890</td>
+                </tr>
+                <tr class="table-secondary">
+                    <td>john</td>
+                    <td>78965412</td>
+                    <td>35</td>
+                    <td>24680</td>
+                </tr>
+                <tr class="table-secondary">
+                    <td>john</td>
+                    <td>78965412</td>
+                    <td>35</td>
+                    <td>24680</td>
+                </tr>
+            </tbody>
+        </table>
+        
+    </div>
+
+</div>
+
+
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
