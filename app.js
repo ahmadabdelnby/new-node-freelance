@@ -51,11 +51,11 @@ const fs = require('fs');
 //middleware /must be added at the top
 app.use(express.json());
 app.use(cors({
-  origin: ['http://localhost:5000', 'http://localhost:5173', 'http://localhost:3001', 'http://localhost:4200'],
-  credentials: true,
+  origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
 
 // Security middleware
 app.use(helmet({

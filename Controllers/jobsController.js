@@ -56,16 +56,23 @@ const createJob = async (req, res) => {
             console.log('✅ Processed', attachments.length, 'attachments');
         }
 
-        // Generate embedding for the job title + description
-        const textForEmbedding = `${title} ${description}`;
-        const embeddingResponse = await openai.embeddings.create({
-            model: 'text-embedding-3-large', // consistent embedding model
-            input: textForEmbedding
-        });
+        // Generate embedding for the job title + description (optional - if API key works)
+        let embedding = null;
+        try {
+            const textForEmbedding = `${title} ${description}`;
+            const embeddingResponse = await openai.embeddings.create({
+                model: 'text-embedding-3-large', // consistent embedding model
+                input: textForEmbedding
+            });
+            embedding = embeddingResponse.data[0].embedding;
+            console.log('✅ Embedding generated successfully');
+        } catch (embeddingError) {
+            console.warn('⚠️ Could not generate embedding (API key may be invalid or expired):', embeddingError.message);
+            console.log('📝 Job will be created without embedding');
+        }
 
-        const embedding = embeddingResponse.data[0].embedding;
-
-        // Create new job with embedding
+        // Create new job with or without embedding
+        
         const newJob = new job({
             client: clientId,
             title,
@@ -79,7 +86,7 @@ const createJob = async (req, res) => {
             } : undefined,
             deadline,
             attachments, // 🔥 Add attachments to job
-            embedding // save embedding in DB
+            ...(embedding && { embedding }) // only add embedding if it exists
         });
 
         await newJob.save();
