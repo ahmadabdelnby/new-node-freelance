@@ -81,7 +81,7 @@ const swagger = swaggerJsDoc({
     },
     servers: [
       {
-        url: `http://localhost:${process.env.PORT || 3000}`,
+        url: `https://herfav1.netlify.app/Freelancing/api/v1`,
       },
     ],
     components: {
