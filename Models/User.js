@@ -185,7 +185,7 @@ const userSchema = new mongoose.Schema({
     },
     balance: {
         type: Number,
-        default: 1000, // Default balance for testing
+        // default: 1000,
         min: 0
     },
     responseTime: {
